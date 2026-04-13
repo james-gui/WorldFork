@@ -3371,30 +3371,28 @@ def resolve_simulation(simulation_id: str):
         db_path = os.path.join(sim_dir, 'polymarket', 'polymarket.db')
         if os.path.exists(db_path):
             try:
-                con = sqlite3.connect(db_path)
-                cur = con.cursor()
-                tables = {r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                with sqlite3.connect(db_path) as con:
+                    cur = con.cursor()
+                    tables = {r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
-                final_price_yes = None
+                    final_price_yes = None
 
-                if 'price_history' in tables:
-                    # Read the latest round's price for the first market
-                    row = cur.execute(
-                        "SELECT price_yes FROM price_history ORDER BY round_num DESC, market_id LIMIT 1"
-                    ).fetchone()
-                    if row:
-                        final_price_yes = row[0]
-                elif 'market' in tables:
-                    row = cur.execute(
-                        "SELECT reserve_yes, reserve_no FROM market LIMIT 1"
-                    ).fetchone()
-                    if row:
-                        ry, rn = row
-                        total = (ry or 0) + (rn or 0)
-                        if total > 0:
-                            final_price_yes = rn / total  # price_yes = reserve_no / total (Wonderwall AMM)
-
-                con.close()
+                    if 'price_history' in tables:
+                        # Read the latest round's price for the first market
+                        row = cur.execute(
+                            "SELECT price_yes FROM price_history ORDER BY round_num DESC, market_id LIMIT 1"
+                        ).fetchone()
+                        if row:
+                            final_price_yes = row[0]
+                    elif 'market' in tables:
+                        row = cur.execute(
+                            "SELECT reserve_yes, reserve_no FROM market LIMIT 1"
+                        ).fetchone()
+                        if row:
+                            ry, rn = row
+                            total = (ry or 0) + (rn or 0)
+                            if total > 0:
+                                final_price_yes = rn / total  # price_yes = reserve_no / total (Wonderwall AMM)
 
                 if final_price_yes is not None:
                     predicted_confidence = round(float(final_price_yes), 4)

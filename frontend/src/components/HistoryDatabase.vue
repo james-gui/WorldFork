@@ -276,8 +276,8 @@
                 <div v-if="selectedProject.resolution.accuracy_score !== null" class="resolve-result-row">
                   <span class="resolve-label">Accuracy</span>
                   <span class="resolve-value accuracy-value"
-                    :class="selectedProject.resolution.accuracy_score >= 1.0 ? 'correct' : selectedProject.resolution.accuracy_score <= 0.0 ? 'wrong' : 'split'">
-                    {{ selectedProject.resolution.accuracy_score >= 1.0 ? '✓ Correct' : selectedProject.resolution.accuracy_score <= 0.0 ? '✗ Incorrect' : '~ Split' }}
+                    :class="selectedProject.resolution.accuracy_score >= 1.0 ? 'correct' : (selectedProject.resolution.accuracy_score <= 0.0 && selectedProject.resolution.accuracy_score !== null) ? 'wrong' : 'split'">
+                    {{ selectedProject.resolution.accuracy_score >= 1.0 ? '✓ Correct' : (selectedProject.resolution.accuracy_score <= 0.0 && selectedProject.resolution.accuracy_score !== null) ? '✗ Incorrect' : '~ Split' }}
                   </span>
                 </div>
                 <div v-if="selectedProject.resolution.notes" class="resolve-notes">{{ selectedProject.resolution.notes }}</div>
