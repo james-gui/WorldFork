@@ -44,10 +44,21 @@
         v-if="allActions.length > 0"
         class="action-btn secondary"
         :class="{ active: showInfluence }"
-        @click="showInfluence = !showInfluence"
+        @click="showInfluence = !showInfluence; showBeliefDrift = false"
         title="Agent influence leaderboard"
       >
         ◈ Influence
+      </button>
+
+      <!-- Belief Drift Chart toggle -->
+      <button
+        v-if="allActions.length > 0"
+        class="action-btn secondary"
+        :class="{ active: showBeliefDrift }"
+        @click="showBeliefDrift = !showBeliefDrift; showInfluence = false"
+        title="Aggregate belief drift chart"
+      >
+        ◎ Belief Drift
       </button>
 
       <!-- Resume (when paused/stopped/failed with partial data) -->
@@ -144,8 +155,16 @@
       class="influence-overlay"
     />
 
+    <!-- Belief Drift Chart (overlay when toggled) -->
+    <BeliefDriftChart
+      v-if="showBeliefDrift"
+      :simulationId="simulationId"
+      :visible="showBeliefDrift"
+      class="influence-overlay"
+    />
+
     <!-- Main Content: Dual Timeline -->
-    <div v-show="!showInfluence" class="main-content-area" ref="scrollContainer" @scroll="onTimelineScroll">
+    <div v-show="!showInfluence && !showBeliefDrift" class="main-content-area" ref="scrollContainer" @scroll="onTimelineScroll">
       <!-- Scroll to bottom button -->
       <button
         v-if="showScrollBtn"
@@ -419,6 +438,7 @@ import {
 } from '../api/simulation'
 import { generateReport } from '../api/report'
 import InfluenceLeaderboard from './InfluenceLeaderboard.vue'
+import BeliefDriftChart from './BeliefDriftChart.vue'
 
 const props = defineProps({
   simulationId: String,
@@ -452,6 +472,7 @@ const monitorCollapsed = ref(false)
 const filteredAgent = ref(null)
 const filteredPlatform = ref(null)
 const showInfluence = ref(false)
+const showBeliefDrift = ref(false)
 
 const filterByAgent = (agentName) => {
   filteredAgent.value = filteredAgent.value === agentName ? null : agentName

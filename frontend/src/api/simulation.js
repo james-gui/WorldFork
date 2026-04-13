@@ -244,6 +244,15 @@ export const getInfluenceLeaderboard = (simulationId) => {
 }
 
 /**
+ * Get per-round belief drift distribution (bullish/neutral/bearish agent percentages)
+ * @param {string} simulationId
+ * @returns {Promise<{rounds, bullish, neutral, bearish, topics, consensus_round, summary}>}
+ */
+export const getBeliefDrift = (simulationId) => {
+  return service.get(`/api/simulation/${simulationId}/belief-drift`)
+}
+
+/**
  * Fork a simulation — copies agent profiles and config into a new simulation
  * that is immediately ready to run.
  * @param {Object} data - { parent_simulation_id, simulation_requirement? }
