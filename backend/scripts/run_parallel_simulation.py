@@ -1029,7 +1029,8 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         # Use general configuration
         llm_api_key = os.environ.get("LLM_API_KEY", "")
         llm_base_url = os.environ.get("LLM_BASE_URL", "")
-        llm_model = os.environ.get("LLM_MODEL_NAME", "")
+        # OASIS_MODEL_NAME overrides LLM_MODEL_NAME for the simulation loop
+        llm_model = os.environ.get("OASIS_MODEL_NAME", "") or os.environ.get("LLM_MODEL_NAME", "")
         config_label = "[General LLM]"
     
     # If no model name in .env, use config as fallback

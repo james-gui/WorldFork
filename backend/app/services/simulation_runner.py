@@ -724,6 +724,26 @@ class SimulationRunner:
                                         state.runner_status = RunnerStatus.COMPLETED
                                         state.completed_at = datetime.now().isoformat()
                                         logger.info(f"All platform simulations completed: {state.simulation_id}")
+
+                                        # Generate run summary (best-effort)
+                                        try:
+                                            from ..utils.run_summary import generate_run_summary
+                                            events_path = os.path.join(
+                                                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                                                'logs', 'events.jsonl'
+                                            )
+                                            sim_dir = os.path.join(
+                                                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                                                'uploads', 'simulations', state.simulation_id
+                                            )
+                                            generate_run_summary(
+                                                events_path,
+                                                sim_id=state.simulation_id,
+                                                start_after=state.started_at,
+                                                output_dir=sim_dir,
+                                            )
+                                        except Exception as e:
+                                            logger.warning(f"Failed to generate run summary: {e}")
                                 
                                 # Update round info (from round_end event)
                                 elif event_type == "round_end":

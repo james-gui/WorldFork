@@ -91,16 +91,13 @@ class WebEnricher:
         self._cache: dict = {}  # entity_name_lower -> result string
 
     def _get_llm(self) -> LLMClient:
-        """Lazy-init the LLM client (avoids import-time errors)."""
-        if self._llm is None:
-            # Use dedicated search model if configured, otherwise default LLM
-            search_model = Config.WEB_SEARCH_MODEL
-            if search_model:
-                logger.info(f"Web enrichment using search model: {search_model}")
-                self._llm = create_llm_client(model=search_model)
-            else:
-                self._llm = create_llm_client()
-        return self._llm
+        """Create an LLM client per call for thread-safe parallel use."""
+        # Use dedicated search model if configured, otherwise default LLM
+        search_model = Config.WEB_SEARCH_MODEL
+        if search_model:
+            logger.info(f"Web enrichment using search model: {search_model}")
+            return create_llm_client(model=search_model)
+        return create_llm_client()
 
     def should_enrich(
         self,

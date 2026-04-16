@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..utils.logger import get_logger
-from ..utils.llm_client import LLMClient, create_smart_llm_client
+from ..utils.llm_client import LLMClient, create_llm_client, create_smart_llm_client
 from ..storage import GraphStorage
 
 logger = get_logger('miroshark.graph_tools')
@@ -398,14 +398,22 @@ class GraphToolsService:
     def __init__(self, storage: GraphStorage, llm_client: Optional[LLMClient] = None):
         self.storage = storage
         self._llm_client = llm_client
+        self._fast_llm_client = None
         logger.info("GraphToolsService initialization complete")
 
     @property
     def llm(self) -> LLMClient:
-        """Lazy initialization of LLM client"""
+        """Lazy initialization of smart LLM client (for reasoning tasks)"""
         if self._llm_client is None:
             self._llm_client = create_smart_llm_client()
         return self._llm_client
+
+    @property
+    def fast_llm(self) -> LLMClient:
+        """Lazy initialization of fast LLM client (for interviews, selection, questions)"""
+        if self._fast_llm_client is None:
+            self._fast_llm_client = create_llm_client()
+        return self._fast_llm_client
 
     # ========== Basic Tools ==========
 
@@ -967,7 +975,7 @@ Please decompose the following question into {max_queries} sub-questions:
 Return the sub-questions as a JSON list."""
 
         try:
-            response = self.llm.chat_json(
+            response = self.fast_llm.chat_json(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -1353,10 +1361,10 @@ Return the sub-questions as a JSON list."""
         )
 
         try:
-            response_text = self.llm.chat(
+            response_text = self.fast_llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=2048,
+                max_tokens=1024,
             )
             if not response_text:
                 response_text = "(No response generated)"
@@ -1502,14 +1510,11 @@ Return the sub-questions as a JSON list."""
 
         agent_summaries = []
         for i, profile in enumerate(profiles):
-            summary = {
-                "index": i,
-                "name": profile.get("realname", profile.get("username", f"Agent_{i}")),
-                "profession": profile.get("profession", "Unknown"),
-                "bio": profile.get("bio", "")[:200],
-                "interested_topics": profile.get("interested_topics", [])
-            }
-            agent_summaries.append(summary)
+            name = profile.get("realname", profile.get("username", f"Agent_{i}"))
+            profession = profile.get("profession", "Unknown")
+            topics = profile.get("interested_topics", [])
+            topics_str = f" [{', '.join(topics)}]" if topics else ""
+            agent_summaries.append(f"{i}: {name} — {profession}{topics_str}")
 
         system_prompt = """You are a professional interview planning expert. Your task is to select the most suitable Agents for interview from the simulated Agent list based on the interview requirements.
 
@@ -1525,19 +1530,20 @@ Return JSON format:
     "reasoning": "Explanation of selection rationale"
 }"""
 
+        agents_list = "\n".join(agent_summaries)
         user_prompt = f"""Interview Requirement:
 {interview_requirement}
 
 Simulation Background:
 {simulation_requirement if simulation_requirement else "Not provided"}
 
-Available Agent List ({len(agent_summaries)} total):
-{json.dumps(agent_summaries, ensure_ascii=False, indent=2)}
+Available Agents ({len(agent_summaries)} total):
+{agents_list}
 
-Please select up to {max_agents} most suitable Agents for interview and explain your selection rationale."""
+Select up to {max_agents} agents. Return their indices."""
 
         try:
-            response = self.llm.chat_json(
+            response = self.fast_llm.chat_json(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -1691,7 +1697,7 @@ Interview Subject Roles: {', '.join(agent_roles)}
 Please generate 3-5 interview questions."""
 
         try:
-            response = self.llm.chat_json(
+            response = self.fast_llm.chat_json(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -1747,7 +1753,7 @@ Interview Content:
 Please generate an interview summary."""
 
         try:
-            summary = self.llm.chat(
+            summary = self.fast_llm.chat(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}

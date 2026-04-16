@@ -89,6 +89,10 @@ class Config:
     # for grounded search, or "perplexity/sonar" for fast search). If empty, uses default LLM.
     WEB_SEARCH_MODEL = os.environ.get('WEB_SEARCH_MODEL', '')
 
+    # OASIS model — optional model for OASIS/CAMEL agent simulation loop.
+    # When not set, uses LLM_MODEL_NAME.
+    OASIS_MODEL_NAME = os.environ.get('OASIS_MODEL_NAME', '')
+
     # NER model — optional faster model for entity extraction (high-volume, mechanical task)
     # When not set, NER uses the default LLM config above.
     NER_MODEL_NAME = os.environ.get('NER_MODEL_NAME', '')

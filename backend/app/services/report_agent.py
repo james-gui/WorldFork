@@ -1815,12 +1815,14 @@ class ReportAgent:
             tools_description=self._get_tools_description(),
         )
 
-        # Build user prompt - pass in max 4000 characters per completed section
+        # Build user prompt - pass previous sections as brief summaries to avoid
+        # blowing up context (was 112K tokens across 14 calls)
+        MAX_PREVIOUS_TOTAL = 6000  # chars total for all previous sections
         if previous_sections:
+            per_section_budget = max(400, MAX_PREVIOUS_TOTAL // len(previous_sections))
             previous_parts = []
             for sec in previous_sections:
-                # Max 4000 characters per section
-                truncated = sec[:4000] + "..." if len(sec) > 4000 else sec
+                truncated = sec[:per_section_budget] + "..." if len(sec) > per_section_budget else sec
                 previous_parts.append(truncated)
             previous_content = "\n\n---\n\n".join(previous_parts)
         else:
@@ -2362,7 +2364,26 @@ Write in the same analytical style as the report. Use **bold** for emphasis. Do 
                 progress_callback("completed", 100, "Report generation complete")
             
             logger.info(f"Report generation complete: {report_id}")
-            
+
+            # Generate final run summary including report gen costs
+            try:
+                from ..utils.run_summary import generate_run_summary
+                events_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    'logs', 'events.jsonl'
+                )
+                sim_dir = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    'uploads', 'simulations', self.simulation_id
+                ) if self.simulation_id else None
+                generate_run_summary(
+                    events_path,
+                    sim_id=self.simulation_id,
+                    output_dir=sim_dir,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to generate run summary: {e}")
+
             # Close console logger
             if self.console_logger:
                 self.console_logger.close()

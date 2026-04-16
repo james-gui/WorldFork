@@ -158,6 +158,16 @@ class SocialAgent(ChatAgent):
             "\n"
             "What do you think Helen should do?")
 
+    async def _aget_model_response(self, openai_messages, num_tokens, **kwargs):
+        """Filter empty-content messages that Gemini rejects with INVALID_ARGUMENT."""
+        filtered = [
+            msg for msg in openai_messages
+            if msg.get("content") is not None and str(msg["content"]).strip()
+        ]
+        if not filtered:
+            filtered = [{"role": "user", "content": "(empty context)"}]
+        return await super()._aget_model_response(filtered, num_tokens, **kwargs)
+
     async def perform_action_by_llm(self):
         # Get environment observation:
         env_prompt = await self.env.to_text_prompt()
