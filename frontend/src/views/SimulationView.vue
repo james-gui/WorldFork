@@ -22,7 +22,7 @@
 
       <div class="header-right">
         <div class="workflow-step">
-          <span class="step-num">Step 2/5</span>
+          <span class="step-num">Step 2/4</span>
           <span class="step-name">Agent Setup</span>
         </div>
         <div class="step-divider"></div>
@@ -58,6 +58,7 @@
           @next-step="handleNextStep"
           @add-log="addLog"
           @update-status="updateStatus"
+          @update-phase="updatePhase"
         />
       </div>
     </main>
@@ -90,6 +91,7 @@ const graphData = ref(null)
 const graphLoading = ref(false)
 const systemLogs = ref([])
 const currentStatus = ref('processing') // processing | completed | error
+const currentPhase = ref(0) // 0: Initializing, 1: Profiles, 2: Config, 3: Orchestrating, 4: Ready
 
 // --- Computed Layout Styles ---
 const leftPanelStyle = computed(() => {
@@ -112,7 +114,14 @@ const statusClass = computed(() => {
 const statusText = computed(() => {
   if (currentStatus.value === 'error') return 'Error'
   if (currentStatus.value === 'completed') return 'Ready'
-  return 'Preparing'
+  switch (currentPhase.value) {
+    case 0: return 'Initializing'
+    case 1: return 'Generating Profiles'
+    case 2: return 'Generating Config'
+    case 3: return 'Orchestrating'
+    case 4: return 'Ready'
+    default: return 'Preparing'
+  }
 })
 
 // --- Helpers ---
@@ -126,6 +135,10 @@ const addLog = (msg) => {
 
 const updateStatus = (status) => {
   currentStatus.value = status
+}
+
+const updatePhase = (phase) => {
+  currentPhase.value = phase
 }
 
 // --- Layout Methods ---
@@ -289,8 +302,8 @@ const refreshGraph = () => {
 
 watchEffect(() => {
   const status = statusClass.value
-  const dot = status === 'processing' ? '\uD83D\uDFE0' : status === 'error' ? '\uD83D\uDD34' : status === 'completed' ? '\uD83D\uDFE2' : ''
-  document.title = dot ? `${dot} (2/5) MiroShark` : '(2/5) MiroShark'
+  const dot = status === 'error' ? '\uD83D\uDD34' : status === 'completed' ? '\uD83D\uDFE2' : '\uD83D\uDFE0'
+  document.title = `${dot} (2/4) ${statusText.value} · MiroShark`
 })
 
 onMounted(async () => {

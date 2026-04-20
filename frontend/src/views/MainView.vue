@@ -22,7 +22,7 @@
 
       <div class="header-right">
         <div class="workflow-step">
-          <span class="step-num">Step {{ currentStep }}/5</span>
+          <span class="step-num">Step {{ currentStep }}/4</span>
           <span class="step-name">{{ stepNames[currentStep - 1] }}</span>
         </div>
         <div class="step-divider"></div>
@@ -91,7 +91,7 @@ const viewMode = ref('split') // graph | split | workbench
 
 // Step State
 const currentStep = ref(1) // 1: Graph Construction, 2: Agent Setup, 3: Start Simulation, 4: Report Generation, 5: Deep Interaction
-const stepNames = ['Graph Construction', 'Agent Setup', 'Start Simulation', 'Report Generation', 'Deep Interaction']
+const stepNames = ['Graph Construction', 'Agent Setup', 'Start Simulation', 'Report Generation']
 
 // Data State
 const currentProjectId = ref(route.params.projectId)
@@ -158,7 +158,7 @@ const toggleMaximize = (target) => {
 }
 
 const handleNextStep = (params = {}) => {
-  if (currentStep.value < 5) {
+  if (currentStep.value < 4) {
     currentStep.value++
     addLog(`Entering Step ${currentStep.value}: ${stepNames[currentStep.value - 1]}`)
     
@@ -415,7 +415,7 @@ watchEffect(() => {
   const step = currentStep.value
   const status = statusClass.value
   const dot = status === 'processing' ? '\uD83D\uDFE0' : status === 'error' ? '\uD83D\uDD34' : status === 'completed' ? '\uD83D\uDFE2' : ''
-  document.title = dot ? `${dot} (${step}/5) MiroShark` : `(${step}/5) MiroShark`
+  document.title = dot ? `${dot} (${step}/4) MiroShark` : `(${step}/4) MiroShark`
 })
 
 onMounted(() => {

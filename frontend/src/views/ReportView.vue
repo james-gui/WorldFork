@@ -22,7 +22,7 @@
 
       <div class="header-right">
         <div class="workflow-step">
-          <span class="step-num">Step 4/5</span>
+          <span class="step-num">Step 4/4</span>
           <span class="step-name">Report Generation</span>
         </div>
         <div class="step-divider"></div>
@@ -217,7 +217,7 @@ watch(() => route.params.reportId, (newId) => {
 watchEffect(() => {
   const status = statusClass.value
   const dot = status === 'processing' ? '\uD83D\uDFE0' : status === 'error' ? '\uD83D\uDD34' : status === 'completed' ? '\uD83D\uDFE2' : ''
-  document.title = dot ? `${dot} (4/5) MiroShark` : '(4/5) MiroShark'
+  document.title = dot ? `${dot} (4/4) MiroShark` : '(4/4) MiroShark'
 })
 
 onUnmounted(() => { document.title = 'MiroShark' })

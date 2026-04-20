@@ -9,11 +9,12 @@
             <span class="step-title">Simulation Instance Initialization</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 0" class="badge success">Completed</span>
-            <span v-else class="badge processing">Initializing</span>
+            <span v-if="phase > 0" class="badge success"><span class="badge-dot"></span>Completed</span>
+            <span v-else-if="simulationId" class="badge processing"><span class="badge-dot"></span>Initializing</span>
+            <span v-else class="badge pending"><span class="badge-dot"></span>Loading</span>
           </div>
         </div>
-        
+
         <div class="card-content">
           <p class="api-note">POST /api/simulation/create</p>
           <p class="description">
@@ -49,9 +50,9 @@
             <span class="step-title">Generate Agent Profiles</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 1" class="badge success">Completed</span>
-            <span v-else-if="phase === 1" class="badge processing">{{ prepareProgress }}%</span>
-            <span v-else class="badge pending">Waiting</span>
+            <span v-if="phase > 1" class="badge success"><span class="badge-dot"></span>Completed</span>
+            <span v-else-if="phase === 1" class="badge processing"><span class="badge-dot"></span>{{ prepareProgress }}%</span>
+            <span v-else class="badge pending"><span class="badge-dot"></span>Waiting</span>
           </div>
         </div>
 
@@ -128,10 +129,10 @@
             <span class="step-title">Generate Simulation Config</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 2" class="badge success">Completed</span>
-            <span v-else-if="configError" class="badge error">Failed</span>
-            <span v-else-if="phase === 2" class="badge processing">Generating</span>
-            <span v-else class="badge pending">Waiting</span>
+            <span v-if="phase > 2" class="badge success"><span class="badge-dot"></span>Completed</span>
+            <span v-else-if="configError" class="badge error"><span class="badge-dot"></span>Failed</span>
+            <span v-else-if="phase === 2" class="badge processing"><span class="badge-dot"></span>Generating</span>
+            <span v-else class="badge pending"><span class="badge-dot"></span>Waiting</span>
           </div>
         </div>
 
@@ -418,9 +419,9 @@
             <span class="step-title">Initial Activation Orchestration</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 3" class="badge success">Completed</span>
-            <span v-else-if="phase === 3" class="badge processing">Orchestrating</span>
-            <span v-else class="badge pending">Waiting</span>
+            <span v-if="phase > 3" class="badge success"><span class="badge-dot"></span>Completed</span>
+            <span v-else-if="phase === 3" class="badge processing"><span class="badge-dot"></span>Orchestrating</span>
+            <span v-else class="badge pending"><span class="badge-dot"></span>Waiting</span>
           </div>
         </div>
 
@@ -490,8 +491,8 @@
             <span class="step-title">Preparation Complete</span>
           </div>
           <div class="step-status">
-            <span v-if="phase >= 4" class="badge processing">In Progress</span>
-            <span v-else class="badge pending">Waiting</span>
+            <span v-if="phase >= 4" class="badge processing"><span class="badge-dot"></span>In Progress</span>
+            <span v-else class="badge pending"><span class="badge-dot"></span>Waiting</span>
           </div>
         </div>
 
@@ -714,7 +715,7 @@ const props = defineProps({
   systemLogs: Array
 })
 
-const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
+const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status', 'update-phase'])
 
 // State
 const phase = ref(0) // 0: Initializing, 1: Generating Profiles, 2: Generating Config, 3: Complete
@@ -745,6 +746,11 @@ let lastLoggedConfigStage = ''
 // Simulation rounds configuration
 const useCustomRounds = ref(false) // default: use auto-configured rounds
 const customMaxRounds = ref(40)   // default recommended: 40 rounds
+
+// Notify parent whenever phase changes so page title/status stays in sync
+watch(phase, (newPhase) => {
+  emit('update-phase', newPhase)
+}, { immediate: true })
 
 // Watch stage to update phase
 watch(currentStage, (newStage) => {
@@ -1305,6 +1311,9 @@ onUnmounted(() => {
 }
 
 .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
   padding: 4px 8px;
@@ -1313,11 +1322,22 @@ onUnmounted(() => {
   letter-spacing: 3px;
 }
 
+.badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
 .badge.success { background: #43C165; color: #FAFAFA; }
 .badge.processing { background: #FF6B1A; color: #FAFAFA; }
+.badge.processing .badge-dot { animation: badge-pulse 1s infinite; }
 .badge.pending { background: var(--color-gray); color: rgba(10,10,10,0.4); }
 .badge.accent { background: rgba(255,107,26,0.1); color: #FF6B1A; }
 .badge.error { background: #FF4444; color: #FAFAFA; }
+
+@keyframes badge-pulse { 50% { opacity: 0.4; } }
 
 .step-card.error { border-color: rgba(255,68,68,0.3); }
 

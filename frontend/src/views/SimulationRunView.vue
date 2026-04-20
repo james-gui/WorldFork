@@ -22,7 +22,7 @@
 
       <div class="header-right">
         <div class="workflow-step">
-          <span class="step-num">Step 3/5</span>
+          <span class="step-num">Step 3/4</span>
           <span class="step-name">Simulation</span>
         </div>
         <div class="step-divider"></div>
@@ -305,7 +305,7 @@ watch(isSimulating, (newValue) => {
 watchEffect(() => {
   const status = statusClass.value
   const dot = status === 'processing' ? '\uD83D\uDFE0' : status === 'error' ? '\uD83D\uDD34' : status === 'completed' ? '\uD83D\uDFE2' : ''
-  document.title = dot ? `${dot} (3/5) MiroShark` : '(3/5) MiroShark'
+  document.title = dot ? `${dot} (3/4) MiroShark` : '(3/4) MiroShark'
 })
 
 onMounted(() => {
