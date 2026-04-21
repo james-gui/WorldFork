@@ -30,16 +30,6 @@
 - Writes analytical reports citing what agents actually said and how markets moved
 - Lets you chat with any agent, inject breaking news live, or branch "what if" timelines
 
-## How it works
-
-```
-Document  →  Graph build (NER + Neo4j)  →  Persona generation (+ web enrichment)
-                                                        ↓
-              Report (ReACT agent)  ←  Simulation (Twitter ∥ Reddit ∥ Polymarket)
-```
-
-See [Architecture](docs/ARCHITECTURE.md) for the full pipeline.
-
 ## Quick start
 
 The recommended path: **one [OpenRouter](https://openrouter.ai/) key + the `./miroshark` launcher.** No GPU, no Ollama, no model downloads. First simulation ≈ 15–25 min, ~$1.20 (Cheap preset) to ~$3.50 (Best preset).
@@ -111,10 +101,6 @@ Each feature is documented in **[docs/FEATURES.md](docs/FEATURES.md)**.
 | [MCP](docs/MCP.md) | Claude Desktop integration + report agent tools |
 | [Observability](docs/OBSERVABILITY.md) | Debug panel, event stream, logging |
 | [Contributing](CONTRIBUTING.md) | Tests and development |
-
-## Credits
-
-Built on [MiroFish](https://github.com/666ghj/MiroFish) by [666ghj](https://github.com/666ghj) (Shanda Group). Neo4j + Ollama storage layer adapted from [MiroFish-Offline](https://github.com/nikmcfly/MiroFish-Offline) by [nikmcfly](https://github.com/nikmcfly). Simulation engine powered by [OASIS](https://github.com/camel-ai/oasis) (CAMEL-AI).
 
 ## License
 
