@@ -115,7 +115,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { publishSimulation, getEmbedSummary } from '@/api/simulation'
+import { publishSimulation, getEmbedSummary } from '../api/simulation'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
