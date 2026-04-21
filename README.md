@@ -13,7 +13,7 @@
 
 <p align="center">
   <strong>Simulate anything, for $1 &amp; less than 10 min — Universal Swarm Intelligence Engine</strong><br>
-  Upload any document (press release, policy draft, financial report) and MiroShark spawns hundreds of AI agents that simulate public reaction hour by hour — posts, arguments, trades, opinion shifts.
+  Drop in anything — a press release, a news headline, a policy draft, a question you can't answer, a historical what-if — and MiroShark spawns hundreds of agents that react to it hour by hour. Posting, arguing, trading, changing their minds.
 </p>
 
 <p align="center">
