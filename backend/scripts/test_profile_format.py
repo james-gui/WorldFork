@@ -1,5 +1,5 @@
 """
-Test whether Profile format generation meets OASIS requirements
+Test whether Profile format generation meets Wonderwall requirements
 Validates:
 1. Twitter Profile generates CSV format
 2. Reddit Profile generates detailed JSON format
@@ -14,18 +14,18 @@ import tempfile
 # Add project path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services.oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
+from app.services.wonderwall_profile_generator import WonderwallProfileGenerator, WonderwallAgentProfile
 
 
 def test_profile_formats():
     """Test Profile formats"""
     print("=" * 60)
-    print("OASIS Profile Format Test")
+    print("Wonderwall Profile Format Test")
     print("=" * 60)
 
     # Create test Profile data
     test_profiles = [
-        OasisAgentProfile(
+        WonderwallAgentProfile(
             user_id=0,
             user_name="test_user_123",
             name="Test User",
@@ -44,7 +44,7 @@ def test_profile_formats():
             source_entity_uuid="test-uuid-123",
             source_entity_type="Student",
         ),
-        OasisAgentProfile(
+        WonderwallAgentProfile(
             user_id=1,
             user_name="org_official_456",
             name="Official Organization",
@@ -61,7 +61,7 @@ def test_profile_formats():
         ),
     ]
 
-    generator = OasisProfileGenerator.__new__(OasisProfileGenerator)
+    generator = WonderwallProfileGenerator.__new__(WonderwallProfileGenerator)
 
     # Use temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -128,9 +128,9 @@ def test_profile_formats():
 
 
 def show_expected_formats():
-    """Display OASIS expected formats"""
+    """Display Wonderwall expected formats"""
     print("\n" + "=" * 60)
-    print("OASIS Expected Profile Format Reference")
+    print("Wonderwall Expected Profile Format Reference")
     print("=" * 60)
 
     print("\n1. Twitter Profile (CSV format)")

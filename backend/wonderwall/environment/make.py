@@ -11,9 +11,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========== Copyright 2023 @ CAMEL-AI.org. All Rights Reserved. ===========
-from wonderwall.environment.env import OasisEnv
+from wonderwall.environment.env import WonderwallEnv
 
 
 def make(*args, **kwargs):
-    obj = OasisEnv(*args, **kwargs)
+    obj = WonderwallEnv(*args, **kwargs)
     return obj

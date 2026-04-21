@@ -322,7 +322,7 @@ class SocialAgent(ChatAgent):
             log_prompts = _os.environ.get('MIROSHARK_LOG_PROMPTS', 'false').lower() == 'true'
 
             # Extract model name from environment (set by simulation runner)
-            model = _os.environ.get('OASIS_MODEL_NAME') or _os.environ.get('LLM_MODEL_NAME', 'unknown')
+            model = _os.environ.get('WONDERWALL_MODEL_NAME') or _os.environ.get('LLM_MODEL_NAME', 'unknown')
 
             # Extract real token counts from CAMEL ModelResponse if available
             tokens_input = 0

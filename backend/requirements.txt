@@ -21,8 +21,8 @@ neo4j>=5.15.0
 # For Ollama embedding API
 requests>=2.31.0
 
-# ============= OASIS Social Media Simulation (Wonderwall fork) =============
-# Wonderwall (oasis package) is bundled directly in backend/oasis/
+# ============= Wonderwall Social Media Simulation (Wonderwall fork) =============
+# Wonderwall (wonderwall package) is bundled directly in backend/wonderwall/
 # No separate install needed — camel-oasis is no longer a pip dependency
 camel-ai==0.2.78
 

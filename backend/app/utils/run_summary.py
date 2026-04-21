@@ -181,7 +181,7 @@ def _aggregate(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     phase_map = {
         "ner_extractor": "NER Extraction",
         "ontology_generator": "Ontology Generation",
-        "oasis_profile_generator": "Profile Generation",
+        "wonderwall_profile_generator": "Profile Generation",
         "web_enrichment": "Web Enrichment",
         "simulation_config_generator": "Simulation Config",
         "belief_state": "Belief Tracking",

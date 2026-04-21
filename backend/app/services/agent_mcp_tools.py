@@ -3,7 +3,7 @@
 Grants select personas (journalists, analysts, traders) access to real MCP
 tools during simulation. Disabled by default: gated by
 ``MCP_AGENT_TOOLS_ENABLED`` at runtime, and further per-persona by the
-``tools_enabled`` flag on :class:`OasisAgentProfile`.
+``tools_enabled`` flag on :class:`WonderwallAgentProfile`.
 
 ## Wiring
 
@@ -25,7 +25,7 @@ tools during simulation. Disabled by default: gated by
    ``tools_enabled: true`` and optionally ``allowed_tools: [name,...]``.
 
 The simulation loop should call :func:`build_agent_toolset` per round and
-pass the resulting dispatcher to the agent's prompt builder. Full OASIS
+pass the resulting dispatcher to the agent's prompt builder. Full Wonderwall
 integration requires changes to the wonderwall runner; this module provides
 the primitive so that work can proceed without blocking the feature flag.
 
@@ -117,7 +117,7 @@ def load_registry() -> Dict[str, MCPServerSpec]:
 
 
 def build_agent_toolset(
-    profile,  # OasisAgentProfile-like duck type
+    profile,  # WonderwallAgentProfile-like duck type
     registry: Optional[Dict[str, MCPServerSpec]] = None,
 ) -> Dict[str, MCPServerSpec]:
     """Return the subset of the registry this persona may call.

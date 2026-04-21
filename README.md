@@ -417,7 +417,7 @@ Each model slot controls a different quality axis — benchmarked across 10+ mod
 | **Default** | Persona richness, sim density | Haiku produces distinct 348-char voices; Gemini Flash produces generic 173-char copy |
 | **Smart** | Report quality (#1 lever) | Claude Sonnet 9/10, Gemini 2.5 Flash 5/10, DeepSeek 2/10 |
 | **NER** | Extraction reliability | gemini-2.0-flash reliable; flash-lite causes 3x retry bloat |
-| **OASIS** | Cost (biggest consumer) | 850+ calls, 7M+ tokens. Verbosity matters more than $/M |
+| **Wonderwall** | Cost (biggest consumer) | 850+ calls, 7M+ tokens. Verbosity matters more than $/M |
 
 #### Cheap Mode — ~$1.20/run, ~13 min
 
@@ -428,18 +428,18 @@ All Gemini. Fast and reliable, but thin reports and generic personas.
 | Default | `google/gemini-2.0-flash-001` | $0.10 | Fast, reliable JSON |
 | Smart | `google/gemini-2.5-flash` | $0.30 | Adequate reports |
 | NER | `google/gemini-2.0-flash-001` | $0.10 | No retry bloat |
-| OASIS | `google/gemini-2.0-flash-lite-001` | $0.075 | Cheapest, least verbose |
+| Wonderwall | `google/gemini-2.0-flash-lite-001` | $0.075 | Cheapest, least verbose |
 
 #### Best Mode — ~$3.50/run, ~25 min
 
-Claude reports, Haiku personas, cheap OASIS. Best report quality at reasonable cost.
+Claude reports, Haiku personas, cheap Wonderwall. Best report quality at reasonable cost.
 
 | Slot | Model | $/M | Why |
 |---|---|---|---|
 | Default | `anthropic/claude-haiku-4.5` | $0.80/$4.00 | Rich personas, dense sim configs |
 | Smart | `anthropic/claude-sonnet-4.6` | $3.00/$15.00 | 9/10 report quality, only ~19 calls |
 | NER | `google/gemini-2.0-flash-001` | $0.10 | Proven reliable, no retries |
-| OASIS | `google/gemini-2.0-flash-lite-001` | $0.075 | OASIS doesn't drive quality — Smart does |
+| Wonderwall | `google/gemini-2.0-flash-lite-001` | $0.075 | Wonderwall doesn't drive quality — Smart does |
 
 > Both presets use `openai/text-embedding-3-small` for embeddings and `google/gemini-2.0-flash-001:online` for web research.
 
@@ -487,7 +487,7 @@ MiroShark routes different workflows to different models. Four independent slots
 | **Default** | `LLM_MODEL_NAME` | Profiles, sim config, memory compaction | ~75-126 calls |
 | **Smart** | `SMART_MODEL_NAME` | Reports, ontology, graph reasoning | ~19 calls |
 | **NER** | `NER_MODEL_NAME` | Entity extraction (structured JSON) | ~85-250 calls |
-| **OASIS** | `OASIS_MODEL_NAME` | Agent decisions in simulation loop | ~850-1650 calls |
+| **Wonderwall** | `WONDERWALL_MODEL_NAME` | Agent decisions in simulation loop | ~850-1650 calls |
 
 When a slot is not set, it falls back to the Default model. If only `SMART_MODEL_NAME` is set (without `SMART_PROVIDER`/`SMART_BASE_URL`/`SMART_API_KEY`), the smart model inherits the default provider settings.
 
@@ -506,8 +506,8 @@ LLM_MODEL_NAME=qwen3.5:27b
 # SMART_PROVIDER=claude-code
 # SMART_MODEL_NAME=claude-sonnet-4-20250514
 
-# OASIS model (agent sim loop — #1 cost driver, use cheapest viable model)
-# OASIS_MODEL_NAME=google/gemini-2.0-flash-lite-001
+# Wonderwall model (agent sim loop — #1 cost driver, use cheapest viable model)
+# WONDERWALL_MODEL_NAME=google/gemini-2.0-flash-lite-001
 
 # NER model (entity extraction — needs reliable JSON, avoid flash-lite)
 # NER_MODEL_NAME=google/gemini-2.0-flash-001

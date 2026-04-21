@@ -160,7 +160,7 @@ We already have this context from our knowledge graph
 
 | | |
 |---|---|
-| **File** | `app/services/oasis_profile_generator.py` |
+| **File** | `app/services/wonderwall_profile_generator.py` |
 | **Method** | `self.llm.chat()` |
 | **Model** | Default LLM |
 | **Temperature** | 0.7 → 0.6 → 0.5 (retry backoff) |
@@ -218,7 +218,7 @@ Return JSON with:
 
 | | |
 |---|---|
-| **File** | `app/services/oasis_profile_generator.py` |
+| **File** | `app/services/wonderwall_profile_generator.py` |
 | **Method** | `self.llm.chat()` |
 | **Model** | Default LLM |
 | **Temperature** | 0.7 → 0.6 → 0.5 |

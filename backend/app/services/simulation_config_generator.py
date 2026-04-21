@@ -134,7 +134,7 @@ class PlatformConfig:
     """Platform-specific configuration.
 
     NOTE ON DEFAULT VALUES: The defaults below are heuristic starting points,
-    NOT calibrated against real platform data. They exist because the OASIS
+    NOT calibrated against real platform data. They exist because the Wonderwall
     simulation framework requires these parameters. Users should treat them as
     tunable scenario assumptions, not empirical constants.
 

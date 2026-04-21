@@ -1,5 +1,5 @@
 """
-OASIS Simulation Runner
+Wonderwall Simulation Runner
 Runs simulations in the background and records each Agent's actions, with real-time status monitoring
 """
 
@@ -208,7 +208,7 @@ class SimulationRunner:
     Simulation Runner
     
     Responsible for:
-    1. Running OASIS simulations in background processes
+    1. Running Wonderwall simulations in background processes
     2. Parsing run logs and recording each Agent's actions
     3. Providing real-time status query interface
     4. Supporting pause/stop/resume operations
@@ -483,7 +483,7 @@ class SimulationRunner:
             main_log_file = open(main_log_path, log_mode, encoding='utf-8')
             
             # Set subprocess environment variables to ensure UTF-8 encoding on Windows
-            # This fixes issues where third-party libraries (e.g. OASIS) read files without specifying encoding
+            # This fixes issues where third-party libraries (e.g. Wonderwall) read files without specifying encoding
             env = os.environ.copy()
             env['PYTHONUTF8'] = '1'  # Python 3.7+ support, makes all open() default to UTF-8
             env['PYTHONIOENCODING'] = 'utf-8'  # Ensure stdout/stderr use UTF-8

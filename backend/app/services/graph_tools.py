@@ -1169,7 +1169,7 @@ Return the sub-questions as a JSON list."""
         """
         [InterviewAgents - Deep Interview]
 
-        Call the real OASIS interview API to interview Agents running in the simulation.
+        Call the real Wonderwall interview API to interview Agents running in the simulation.
         This method does NOT use GraphStorage — it calls SimulationRunner
         and reads agent profiles from disk.
 
@@ -1468,7 +1468,7 @@ Return the sub-questions as a JSON list."""
     ) -> 'InterviewResult':
         """
         Fallback: generate interviews using the LLM directly from agent profiles
-        when the real OASIS interview API is unavailable or fails.
+        when the real Wonderwall interview API is unavailable or fails.
 
         Uses ThreadPoolExecutor to run LLM calls concurrently instead of serially.
         """

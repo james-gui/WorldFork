@@ -115,9 +115,9 @@ async def main():
         load_config,
     )
 
-    # Suppress OASIS verbose logging
+    # Suppress Wonderwall verbose logging
     import logging
-    for name in ["social.agent", "oasis.env", "table"]:
+    for name in ["social.agent", "wonderwall.env", "table"]:
         logger = logging.getLogger(name)
         logger.setLevel(logging.CRITICAL)
         logger.handlers.clear()

@@ -142,11 +142,11 @@ class Config:
     # for grounded search, or "perplexity/sonar" for fast search). If empty, uses default LLM.
     WEB_SEARCH_MODEL = os.environ.get('WEB_SEARCH_MODEL', '')
 
-    # OASIS model — model for OASIS/CAMEL agent simulation loop.
+    # Wonderwall model — model for Wonderwall/CAMEL agent simulation loop.
     # When not set, uses LLM_MODEL_NAME.
     # Recommended: google/gemini-2.0-flash-lite-001 (#1 cost driver — cheapest at $0.56/run,
     # newer models are 4-9x more expensive due to verbosity without quality gain)
-    OASIS_MODEL_NAME = os.environ.get('OASIS_MODEL_NAME', '')
+    WONDERWALL_MODEL_NAME = os.environ.get('WONDERWALL_MODEL_NAME', '')
 
     # NER model — faster model for entity extraction (high-volume, mechanical task)
     # When not set, NER uses the default LLM config above.

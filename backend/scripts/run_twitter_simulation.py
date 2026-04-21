@@ -1,5 +1,5 @@
 """
-OASIS Twitter simulation preset script
+Wonderwall Twitter simulation preset script
 This script reads parameters from a configuration file to run the simulation, fully automated
 
 Features:
@@ -81,8 +81,8 @@ class MaxTokensWarningFilter(logging.Filter):
 logging.getLogger().addFilter(MaxTokensWarningFilter())
 
 
-def setup_oasis_logging(log_dir: str):
-    """Configure OASIS logging with fixed-name log files"""
+def setup_wonderwall_logging(log_dir: str):
+    """Configure Wonderwall logging with fixed-name log files"""
     os.makedirs(log_dir, exist_ok=True)
     
     # Clean up old log files
@@ -127,7 +127,7 @@ try:
     )
 except ImportError as e:
     print(f"Error: Missing dependency {e}")
-    print("Please install first: pip install oasis-ai camel-ai")
+    print("Please install first: pip install camel-ai")
     sys.exit(1)
 
 
@@ -417,7 +417,7 @@ class TwitterSimulationRunner:
             return json.load(f)
     
     def _get_profile_path(self) -> str:
-        """Get Profile file path (OASIS Twitter uses CSV format)"""
+        """Get Profile file path (Wonderwall Twitter uses CSV format)"""
         return os.path.join(self.simulation_dir, "twitter_profiles.csv")
     
     def _get_db_path(self) -> str:
@@ -460,7 +460,7 @@ class TwitterSimulationRunner:
             default_headers={
                 'HTTP-Referer': 'https://github.com/aaronjmars/MiroShark',
                 'X-OpenRouter-Title': 'MiroShark - Universal Swarm Intelligence Engine',
-                'X-OpenRouter-Categories': 'roleplay',
+                'X-OpenRouter-Categories': 'roleplay,personal-agent',
                 'User-Agent': f'MiroShark/1.0 (Wonderwall-Simulation; model={llm_model})',
             },
         )
@@ -475,7 +475,7 @@ class TwitterSimulationRunner:
         Determine which Agents to activate this round based on time and configuration
 
         Args:
-            env: OASIS environment
+            env: Wonderwall environment
             current_hour: Current simulated hour (0-23)
             round_num: Current round number
 
@@ -541,7 +541,7 @@ class TwitterSimulationRunner:
             max_rounds: Maximum simulation rounds (optional, used to truncate long simulations)
         """
         print("=" * 60)
-        print("OASIS Twitter Simulation")
+        print("Wonderwall Twitter Simulation")
         print(f"Config file: {self.config_path}")
         print(f"Simulation ID: {self.config.get('simulation_id', 'unknown')}")
         print(f"Command waiting mode: {'enabled' if self.wait_for_commands else 'disabled'}")
@@ -594,7 +594,7 @@ class TwitterSimulationRunner:
             print(f"Deleted old database: {db_path}")
         
         # Create environment
-        print("Creating OASIS environment...")
+        print("Creating Wonderwall environment...")
         self.env = wonderwall.make(
             agent_graph=self.agent_graph,
             platform=wonderwall.DefaultPlatformType.TWITTER,
@@ -711,7 +711,7 @@ class TwitterSimulationRunner:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description='OASIS Twitter Simulation')
+    parser = argparse.ArgumentParser(description='Wonderwall Twitter Simulation')
     parser.add_argument(
         '--config',
         type=str,
@@ -743,7 +743,7 @@ async def main():
 
     # Initialize logging configuration (use fixed filenames, clean up old logs)
     simulation_dir = os.path.dirname(args.config) or "."
-    setup_oasis_logging(os.path.join(simulation_dir, "log"))
+    setup_wonderwall_logging(os.path.join(simulation_dir, "log"))
 
     runner = TwitterSimulationRunner(
         config_path=args.config,

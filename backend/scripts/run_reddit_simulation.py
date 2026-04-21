@@ -1,5 +1,5 @@
 """
-OASIS Reddit simulation preset script
+Wonderwall Reddit simulation preset script
 This script reads parameters from a configuration file to run the simulation, fully automated
 
 Features:
@@ -91,8 +91,8 @@ class MaxTokensWarningFilter(logging.Filter):
 logging.getLogger().addFilter(MaxTokensWarningFilter())
 
 
-def setup_oasis_logging(log_dir: str):
-    """Configure OASIS logging with fixed-name log files"""
+def setup_wonderwall_logging(log_dir: str):
+    """Configure Wonderwall logging with fixed-name log files"""
     os.makedirs(log_dir, exist_ok=True)
     
     # Clean up old log files
@@ -137,7 +137,7 @@ try:
     )
 except ImportError as e:
     print(f"Error: Missing dependency {e}")
-    print("Please install first: pip install oasis-ai camel-ai")
+    print("Please install first: pip install camel-ai")
     sys.exit(1)
 
 
@@ -482,7 +482,7 @@ class RedditSimulationRunner:
             default_headers={
                 'HTTP-Referer': 'https://github.com/aaronjmars/MiroShark',
                 'X-OpenRouter-Title': 'MiroShark - Universal Swarm Intelligence Engine',
-                'X-OpenRouter-Categories': 'roleplay',
+                'X-OpenRouter-Categories': 'roleplay,personal-agent',
                 'User-Agent': f'MiroShark/1.0 (Wonderwall-Simulation; model={llm_model})',
             },
         )
@@ -597,7 +597,7 @@ class RedditSimulationRunner:
             max_rounds: Maximum simulation rounds (optional, used to truncate long simulations)
         """
         print("=" * 60)
-        print("OASIS Reddit Simulation")
+        print("Wonderwall Reddit Simulation")
         print(f"Config file: {self.config_path}")
         print(f"Simulation ID: {self.config.get('simulation_id', 'unknown')}")
         print(f"Command waiting mode: {'enabled' if self.wait_for_commands else 'disabled'}")
@@ -643,7 +643,7 @@ class RedditSimulationRunner:
             os.remove(db_path)
             print(f"Deleted old database: {db_path}")
         
-        print("Creating OASIS environment...")
+        print("Creating Wonderwall environment...")
         self.env = wonderwall.make(
             agent_graph=self.agent_graph,
             platform=wonderwall.DefaultPlatformType.REDDIT,
@@ -778,7 +778,7 @@ class RedditSimulationRunner:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description='OASIS Reddit Simulation')
+    parser = argparse.ArgumentParser(description='Wonderwall Reddit Simulation')
     parser.add_argument(
         '--config', 
         type=str, 
@@ -810,7 +810,7 @@ async def main():
     
     # Initialize logging configuration (fixed filenames, clean up old logs)
     simulation_dir = os.path.dirname(args.config) or "."
-    setup_oasis_logging(os.path.join(simulation_dir, "log"))
+    setup_wonderwall_logging(os.path.join(simulation_dir, "log"))
     
     runner = RedditSimulationRunner(
         config_path=args.config,

@@ -166,7 +166,7 @@ class EmbeddingService:
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/aaronjmars/MiroShark",
             "X-OpenRouter-Title": "MiroShark - Universal Swarm Intelligence Engine",
-            "X-OpenRouter-Categories": "roleplay",
+            "X-OpenRouter-Categories": "roleplay,personal-agent",
             "User-Agent": "MiroShark/1.0 (EmbeddingService)",
         }
         if self.api_key:

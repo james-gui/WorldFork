@@ -519,7 +519,7 @@ A lightweight quick retrieval tool, suitable for simple, direct information quer
 
 TOOL_DESC_INTERVIEW_AGENTS = """\
 [In-Depth Interview - Real Agent Interview (Dual Platform)]
-Calls the OASIS simulation environment interview API to conduct real interviews with running simulation Agents!
+Calls the Wonderwall simulation environment interview API to conduct real interviews with running simulation Agents!
 This is not an LLM simulation, but calls the real interview interface to get original responses from simulation Agents.
 By default, interviews are conducted simultaneously on Twitter and Reddit platforms for more comprehensive viewpoints.
 
@@ -533,7 +533,7 @@ Workflow:
 [Use Cases]
 - Need to understand event perspectives from different roles (What do students think? What does the media think? What do officials say?)
 - Need to collect opinions and positions from multiple parties
-- Need to get real responses from simulation Agents (from the OASIS simulation environment)
+- Need to get real responses from simulation Agents (from the Wonderwall simulation environment)
 - Want to make the report more vivid with "interview transcripts"
 
 [Return Content]
@@ -542,7 +542,7 @@ Workflow:
 - Key quotes (can be directly cited)
 - Interview summary and viewpoint comparison
 
-[Important] The OASIS simulation environment must be running to use this feature!"""
+[Important] The Wonderwall simulation environment must be running to use this feature!"""
 
 TOOL_DESC_ANALYZE_TRAJECTORY = """\
 [Belief Trajectory Analysis - Opinion Dynamics Data]
@@ -1258,7 +1258,7 @@ class ReportAgent:
                 return result.to_text()
             
             elif tool_name == "interview_agents":
-                # In-depth interview - call real OASIS interview API to get simulation Agent responses
+                # In-depth interview - call real Wonderwall interview API to get simulation Agent responses
                 interview_topic = parameters.get("interview_topic", parameters.get("query", ""))
                 max_agents = parameters.get("max_agents", 8)
                 if isinstance(max_agents, str):

@@ -13,7 +13,7 @@
 # =========== Copyright 2023 @ CAMEL-AI.org. All Rights Reserved. ===========
 """Social media simulation (Twitter / Reddit).
 
-This is the original OASIS simulation type, now packaged as a
+This is the original Wonderwall simulation type, now packaged as a
 ``SimulationConfig`` that can be used with the generic engine.
 """
 from wonderwall.simulations.base import SimulationConfig

@@ -11,10 +11,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========== Copyright 2023 @ CAMEL-AI.org. All Rights Reserved. ===========
-"""Base classes for the OASIS simulation framework.
+"""Base classes for the Wonderwall simulation framework.
 
 Every simulation type (social media, prediction market, auction house, etc.)
-implements these interfaces. The core engine (OasisEnv, Channel, AgentGraph)
+implements these interfaces. The core engine (WonderwallEnv, Channel, AgentGraph)
 stays generic and delegates simulation-specific logic to these classes.
 """
 from __future__ import annotations
@@ -363,7 +363,7 @@ class SimulationConfig:
     """Declarative definition of a simulation type.
 
     Bundle together the platform, action, environment, and prompt classes
-    that define a simulation.  Pass this to ``oasis.make()`` to run it.
+    that define a simulation.  Pass this to ``wonderwall.make()`` to run it.
     """
 
     name: str

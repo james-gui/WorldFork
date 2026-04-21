@@ -1,6 +1,6 @@
 """
 Simulation-related API routes
-Step 2: Entity reading and filtering, OASIS simulation preparation and execution (fully automated)
+Step 2: Entity reading and filtering, Wonderwall simulation preparation and execution (fully automated)
 """
 
 import os
@@ -16,7 +16,7 @@ from ..utils.llm_client import create_smart_llm_client, create_llm_client
 from ..utils.validation import validate_simulation_id
 from ..config import Config
 from ..services.entity_reader import EntityReader
-from ..services.oasis_profile_generator import OasisProfileGenerator
+from ..services.wonderwall_profile_generator import WonderwallProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_config_generator import SimulationConfigGenerator
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
@@ -1514,7 +1514,7 @@ def prepare_simulation():
     Steps:
     1. Check if preparation work has already been completed
     2. Read and filter entities from knowledge graph
-    3. Generate OASIS Agent Profile for each entity (with retry mechanism)
+    3. Generate Wonderwall Agent Profile for each entity (with retry mechanism)
     4. LLM intelligently generates simulation configuration (with retry mechanism)
     5. Save configuration files and preset scripts
 
@@ -2678,7 +2678,7 @@ def download_simulation_script(script_name: str):
 @simulation_bp.route('/generate-profiles', methods=['POST'])
 def generate_profiles():
     """
-    Directly generate OASIS Agent Profile from graph (without creating simulation)
+    Directly generate Wonderwall Agent Profile from graph (without creating simulation)
 
     Request (JSON):
         {
@@ -2718,7 +2718,7 @@ def generate_profiles():
                 "error": "No matching entities found"
             }), 400
         
-        generator = OasisProfileGenerator()
+        generator = WonderwallProfileGenerator()
         profiles = generator.generate_profiles_from_entities(
             entities=filtered.entities,
             use_llm=use_llm
@@ -6382,7 +6382,7 @@ def get_interaction_network(simulation_id: str):
 # Age buckets in display order. "unknown" is appended at the end when populated.
 _DEMO_AGE_BUCKETS = ["<18", "18-24", "25-34", "35-44", "45-54", "55+"]
 
-# Entity-type classification (mirrors OasisProfileGenerator's taxonomy).
+# Entity-type classification (mirrors WonderwallProfileGenerator's taxonomy).
 _INDIVIDUAL_ENTITY_TYPES = frozenset({
     "student", "alumni", "professor", "person", "publicfigure",
     "expert", "faculty", "official", "journalist", "activist",

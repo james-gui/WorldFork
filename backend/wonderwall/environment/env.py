@@ -34,12 +34,12 @@ if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
 # Configure logger
-env_log = logging.getLogger("oasis.env")
+env_log = logging.getLogger("wonderwall.env")
 env_log.setLevel("INFO")
 
 # Add file handler to save logs to file
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-file_handler = logging.FileHandler(f"{log_dir}/oasis-{current_time}.log",
+file_handler = logging.FileHandler(f"{log_dir}/wonderwall-{current_time}.log",
                                    encoding="utf-8")
 file_handler.setLevel("INFO")
 file_handler.setFormatter(
@@ -55,7 +55,7 @@ def _is_interview_action(action) -> bool:
     return action_type == "interview"
 
 
-class OasisEnv:
+class WonderwallEnv:
 
     def __init__(
         self,
@@ -67,7 +67,7 @@ class OasisEnv:
         # New: accept a SimulationConfig for generic simulations
         simulation=None,
     ) -> None:
-        r"""Init the oasis environment.
+        r"""Init the wonderwall environment.
 
         Args:
             agent_graph: The AgentGraph to use in the simulation.

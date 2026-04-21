@@ -55,7 +55,7 @@ class BeliefTracker:
 
         Args:
             db_path: Path to the platform's SQLite database.
-            env: The OasisEnv instance.
+            env: The WonderwallEnv instance.
             active_agents: List of (agent_id, agent) tuples.
             round_num: Current round number.
             actual_actions: If available, the list of action dicts from this round

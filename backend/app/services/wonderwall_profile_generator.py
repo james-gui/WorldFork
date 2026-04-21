@@ -1,6 +1,6 @@
 """
-OASIS Agent Profile Generator
-Convert entities from the knowledge graph to OASIS simulation platform's required Agent Profile format
+Wonderwall Agent Profile Generator
+Convert entities from the knowledge graph to Wonderwall simulation platform's required Agent Profile format
 
 Optimization improvements:
 1. Call knowledge graph retrieval function to enrich node information
@@ -21,12 +21,12 @@ from .entity_reader import EntityNode
 from .web_enrichment import WebEnricher
 from ..storage import GraphStorage
 
-logger = get_logger('miroshark.oasis_profile')
+logger = get_logger('miroshark.wonderwall_profile')
 
 
 @dataclass
-class OasisAgentProfile:
-    """OASIS Agent Profile data structure"""
+class WonderwallAgentProfile:
+    """Wonderwall Agent Profile data structure"""
     # Common fields
     user_id: int
     user_name: str
@@ -71,7 +71,7 @@ class OasisAgentProfile:
         """Convert to Reddit platform format"""
         profile = {
             "user_id": self.user_id,
-            "username": self.user_name,  # OASIS library requires field name as username (no underscore)
+            "username": self.user_name,  # Wonderwall library requires field name as username (no underscore)
             "name": self.name,
             "bio": self.bio,
             "persona": self.persona,
@@ -99,7 +99,7 @@ class OasisAgentProfile:
         """Convert to Twitter platform format"""
         profile = {
             "user_id": self.user_id,
-            "username": self.user_name,  # OASIS library requires field name as username (no underscore)
+            "username": self.user_name,  # Wonderwall library requires field name as username (no underscore)
             "name": self.name,
             "bio": self.bio,
             "persona": self.persona,
@@ -215,11 +215,11 @@ def _social_metrics_for_entity_type(entity_type: str, entity=None) -> Dict[str, 
     }
 
 
-class OasisProfileGenerator:
+class WonderwallProfileGenerator:
     """
-    OASIS Profile Generator
+    Wonderwall Profile Generator
 
-    Convert entities from the knowledge graph to Agent Profile required by OASIS simulation
+    Convert entities from the knowledge graph to Agent Profile required by Wonderwall simulation
 
     Optimization features:
     1. Call knowledge graph retrieval function to get richer context
@@ -294,17 +294,17 @@ class OasisProfileGenerator:
         entity: EntityNode, 
         user_id: int,
         use_llm: bool = True
-    ) -> OasisAgentProfile:
+    ) -> WonderwallAgentProfile:
         """
-        Generate OASIS Agent Profile from knowledge graph entity
+        Generate Wonderwall Agent Profile from knowledge graph entity
 
         Args:
             entity: Knowledge graph entity node
-            user_id: User ID (for OASIS)
+            user_id: User ID (for Wonderwall)
             use_llm: Whether to use LLM to generate detailed persona
 
         Returns:
-            OasisAgentProfile
+            WonderwallAgentProfile
         """
         entity_type = entity.get_entity_type() or "Entity"
 
@@ -341,7 +341,7 @@ class OasisProfileGenerator:
         # entity's structural role rather than random.randint().
         social_defaults = _social_metrics_for_entity_type(entity_type, entity)
 
-        return OasisAgentProfile(
+        return WonderwallAgentProfile(
             user_id=user_id,
             user_name=user_name,
             name=name,
@@ -1011,7 +1011,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
         parallel_count: int = 15,
         realtime_output_path: Optional[str] = None,
         output_platform: str = "reddit"
-    ) -> List[OasisAgentProfile]:
+    ) -> List[WonderwallAgentProfile]:
         """
         Batch generate Agent Profiles from entities (supports parallel generation)
 
@@ -1093,7 +1093,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
             except Exception as e:
                 logger.error(f"Failed to generate persona for entity {entity.name}: {str(e)}")
                 # Create a fallback profile
-                fallback_profile = OasisAgentProfile(
+                fallback_profile = WonderwallAgentProfile(
                     user_id=idx,
                     user_name=self._generate_username(entity.name),
                     name=entity.name,
@@ -1149,7 +1149,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
                     logger.error(f"Exception while processing entity {entity.name}: {str(e)}")
                     with lock:
                         completed_count[0] += 1
-                    profiles[idx] = OasisAgentProfile(
+                    profiles[idx] = WonderwallAgentProfile(
                         user_id=idx,
                         user_name=self._generate_username(entity.name),
                         name=entity.name,
@@ -1167,7 +1167,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
         
         return profiles
     
-    def _print_generated_profile(self, entity_name: str, entity_type: str, profile: OasisAgentProfile):
+    def _print_generated_profile(self, entity_name: str, entity_type: str, profile: WonderwallAgentProfile):
         """Output generated persona to console in real time (full content, no truncation)"""
         separator = "-" * 70
 
@@ -1200,14 +1200,14 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
     
     def save_profiles(
         self,
-        profiles: List[OasisAgentProfile],
+        profiles: List[WonderwallAgentProfile],
         file_path: str,
         platform: str = "reddit"
     ):
         """
         Save profiles to file (choose correct format based on platform)
 
-        OASIS platform format requirements:
+        Wonderwall platform format requirements:
         - Twitter: CSV format
         - Reddit: JSON format
 
@@ -1223,11 +1223,11 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
         else:
             self._save_reddit_json(profiles, file_path)
     
-    def _save_twitter_csv(self, profiles: List[OasisAgentProfile], file_path: str):
+    def _save_twitter_csv(self, profiles: List[WonderwallAgentProfile], file_path: str):
         """
-        Save Twitter Profile as CSV format (compliant with OASIS official requirements)
+        Save Twitter Profile as CSV format (compliant with Wonderwall official requirements)
 
-        OASIS Twitter required CSV fields:
+        Wonderwall Twitter required CSV fields:
         - user_id: User ID (sequential from 0 based on CSV order)
         - name: User's real name
         - username: System username
@@ -1247,7 +1247,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
         with open(file_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             
-            # Write OASIS required headers
+            # Write Wonderwall required headers
             headers = ['user_id', 'name', 'username', 'user_char', 'description']
             writer.writerow(headers)
             
@@ -1272,13 +1272,13 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
                 ]
                 writer.writerow(row)
         
-        logger.info(f"Saved {len(profiles)} Twitter Profiles to {file_path} (OASIS CSV format)")
+        logger.info(f"Saved {len(profiles)} Twitter Profiles to {file_path} (Wonderwall CSV format)")
     
     def _normalize_gender(self, gender: Optional[str]) -> str:
         """
-        Normalize gender field to OASIS required English format
+        Normalize gender field to Wonderwall required English format
 
-        OASIS requires: male, female, other
+        Wonderwall requires: male, female, other
         """
         if not gender:
             return "other"
@@ -1294,12 +1294,12 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
         
         return gender_map.get(gender_lower, "other")
     
-    def _save_reddit_json(self, profiles: List[OasisAgentProfile], file_path: str):
+    def _save_reddit_json(self, profiles: List[WonderwallAgentProfile], file_path: str):
         """
         Save Reddit Profile as JSON format
 
-        Uses the same format as to_reddit_format(), ensuring OASIS can read correctly.
-        Must include user_id field, which is key for OASIS agent_graph.get_agent() matching!
+        Uses the same format as to_reddit_format(), ensuring Wonderwall can read correctly.
+        Must include user_id field, which is key for Wonderwall agent_graph.get_agent() matching!
 
         Required fields:
         - user_id: User ID (integer, used to match poster_agent_id in initial_posts)
@@ -1323,7 +1323,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
                 "persona": profile.persona or f"{profile.name} is a participant in social discussions.",
                 "karma": profile.karma if profile.karma else 1000,
                 "created_at": profile.created_at,
-                # OASIS required fields - ensure all have default values
+                # Wonderwall required fields - ensure all have default values
                 "age": profile.age if profile.age else 30,
                 "gender": self._normalize_gender(profile.gender),
                 "mbti": profile.mbti if profile.mbti else "ISTJ",
@@ -1343,7 +1343,7 @@ IMPORTANT: Do NOT include karma, friend_count, follower_count, or statuses_count
         
         logger.info(f"Saved {len(profiles)} Reddit Profiles to {file_path} (JSON format, includes user_id field)")
 
-    def _save_polymarket_json(self, profiles: List[OasisAgentProfile], file_path: str):
+    def _save_polymarket_json(self, profiles: List[WonderwallAgentProfile], file_path: str):
         """
         Save Polymarket profiles as JSON format.
 

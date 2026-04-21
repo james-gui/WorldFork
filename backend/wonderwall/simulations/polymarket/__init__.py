@@ -11,13 +11,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========== Copyright 2023 @ CAMEL-AI.org. All Rights Reserved. ===========
-"""Polymarket prediction market simulation for OASIS.
+"""Polymarket prediction market simulation for Wonderwall.
 
 Usage::
 
     from wonderwall.simulations.polymarket import polymarket_simulation
 
-    env = oasis.make(
+    env = wonderwall.make(
         agent_graph=agent_graph,
         simulation=polymarket_simulation,
         database_path="./data/polymarket.db",

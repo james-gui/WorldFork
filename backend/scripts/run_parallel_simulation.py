@@ -119,13 +119,13 @@ class MaxTokensWarningFilter(logging.Filter):
 logging.getLogger().addFilter(MaxTokensWarningFilter())
 
 
-def disable_oasis_logging():
+def disable_wonderwall_logging():
     """
     Disable verbose log output from the Wonderwall library
     Wonderwall logs are too verbose (logging each agent's observations and actions); we use our own action_logger
     """
     # Disable all Wonderwall loggers
-    oasis_loggers = [
+    wonderwall_loggers = [
         "social.agent",
         "social.twitter", 
         "social.rec",
@@ -133,7 +133,7 @@ def disable_oasis_logging():
         "table",
     ]
     
-    for logger_name in oasis_loggers:
+    for logger_name in wonderwall_loggers:
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.CRITICAL)  # Only log critical errors
         logger.handlers.clear()
@@ -148,7 +148,7 @@ def init_logging_for_simulation(simulation_dir: str):
         simulation_dir: Simulation directory path
     """
     # Disable Wonderwall verbose logging
-    disable_oasis_logging()
+    disable_wonderwall_logging()
     
     # Clean up old log directory (if it exists)
     old_log_dir = os.path.join(simulation_dir, "log")
@@ -1048,8 +1048,8 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         # Use general configuration
         llm_api_key = os.environ.get("LLM_API_KEY", "")
         llm_base_url = os.environ.get("LLM_BASE_URL", "")
-        # OASIS_MODEL_NAME overrides LLM_MODEL_NAME for the simulation loop
-        llm_model = os.environ.get("OASIS_MODEL_NAME", "") or os.environ.get("LLM_MODEL_NAME", "")
+        # WONDERWALL_MODEL_NAME overrides LLM_MODEL_NAME for the simulation loop
+        llm_model = os.environ.get("WONDERWALL_MODEL_NAME", "") or os.environ.get("LLM_MODEL_NAME", "")
         config_label = "[General LLM]"
     
     # If no model name in .env, use config as fallback
@@ -1057,7 +1057,7 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         llm_model = config.get("llm_model", "")
     if not llm_model:
         raise ValueError(
-            "No LLM model configured. Set OASIS_MODEL_NAME or LLM_MODEL_NAME in .env, "
+            "No LLM model configured. Set WONDERWALL_MODEL_NAME or LLM_MODEL_NAME in .env, "
             "or pass llm_model in the simulation config."
         )
     
@@ -1079,7 +1079,7 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
         default_headers={
             'HTTP-Referer': 'https://github.com/aaronjmars/MiroShark',
             'X-OpenRouter-Title': 'MiroShark - Universal Swarm Intelligence Engine',
-            'X-OpenRouter-Categories': 'roleplay',
+            'X-OpenRouter-Categories': 'roleplay,personal-agent',
             'User-Agent': f'MiroShark/1.0 (Wonderwall-Simulation; model={llm_model})',
         },
     )

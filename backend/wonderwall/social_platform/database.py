@@ -61,7 +61,7 @@ TABLE_NAMES = {
 
 def get_db_path() -> str:
     # First check if the database path is set in environment variables
-    env_db_path = os.environ.get("OASIS_DB_PATH")
+    env_db_path = os.environ.get("WONDERWALL_DB_PATH")
     if env_db_path:
         return env_db_path
 

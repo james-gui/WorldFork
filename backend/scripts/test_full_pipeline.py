@@ -174,7 +174,7 @@ def phase4_profiles(storage, graph_id, ontology):
     t0 = time.time()
 
     from app.services.entity_reader import EntityReader
-    from app.services.oasis_profile_generator import OasisProfileGenerator
+    from app.services.wonderwall_profile_generator import WonderwallProfileGenerator
 
     reader = EntityReader(storage)
     entity_types = [et.get('name', et) if isinstance(et, dict) else et
@@ -195,7 +195,7 @@ def phase4_profiles(storage, graph_id, ontology):
     for e in test_entities:
         print(f"    - {e.name} ({e.get_entity_type()}): {(e.summary or '')[:80]}")
 
-    generator = OasisProfileGenerator(
+    generator = WonderwallProfileGenerator(
         storage=storage,
         graph_id=graph_id,
         simulation_requirement=SIMULATION_REQUIREMENT,

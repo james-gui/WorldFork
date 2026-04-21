@@ -1,5 +1,5 @@
 """
-OASIS Simulation Manager
+Wonderwall Simulation Manager
 Manages parallel simulation across Twitter and Reddit platforms
 Uses preset scripts + LLM-powered configuration parameter generation
 """
@@ -15,7 +15,7 @@ from enum import Enum
 from ..utils.logger import get_logger
 from ..utils.validation import validate_simulation_id
 from .entity_reader import EntityReader
-from .oasis_profile_generator import OasisProfileGenerator
+from .wonderwall_profile_generator import WonderwallProfileGenerator
 from .simulation_config_generator import SimulationConfigGenerator
 
 logger = get_logger('miroshark.simulation')
@@ -36,7 +36,7 @@ class SimulationStatus(str, Enum):
 # NOTE: Platform membership for a simulation is expressed on SimulationState
 # via the ``enable_twitter`` / ``enable_reddit`` / ``enable_polymarket`` flags
 # and via plain string fields (e.g. ``twitter_status``). The run scripts use
-# ``wonderwall.DefaultPlatformType`` when handing off to the OASIS framework.
+# ``wonderwall.DefaultPlatformType`` when handing off to the Wonderwall framework.
 # A previous local ``PlatformType`` enum here was dead code and has been
 # removed — re-add only when MiroShark-side code actually needs an enum.
 
@@ -133,7 +133,7 @@ class SimulationManager:
 
     Core features:
     1. Read entities from graph and filter
-    2. Generate OASIS Agent Profiles
+    2. Generate Wonderwall Agent Profiles
     3. Use LLM to intelligently generate simulation configuration parameters
     4. Prepare all files needed by preset scripts
     """
@@ -266,7 +266,7 @@ class SimulationManager:
 
         Steps:
         1. Read and filter entities from graph
-        2. Generate OASIS Agent Profile for each entity (optional LLM enhancement, supports parallelism)
+        2. Generate Wonderwall Agent Profile for each entity (optional LLM enhancement, supports parallelism)
         3. Use LLM to intelligently generate simulation config parameters (time, activity, posting frequency, etc.)
         4. Save config files and Profile files
         5. Copy preset scripts to simulation directory
@@ -339,7 +339,7 @@ class SimulationManager:
                 )
 
             # Pass graph_id to enable graph retrieval for richer context
-            generator = OasisProfileGenerator(
+            generator = WonderwallProfileGenerator(
                 storage=storage,
                 graph_id=state.graph_id,
                 simulation_requirement=simulation_requirement,
@@ -396,7 +396,7 @@ class SimulationManager:
                 )
             
             if state.enable_twitter:
-                # Twitter uses CSV format! This is an OASIS requirement
+                # Twitter uses CSV format! This is an Wonderwall requirement
                 generator.save_profiles(
                     profiles=profiles,
                     file_path=os.path.join(sim_dir, "twitter_profiles.csv"),

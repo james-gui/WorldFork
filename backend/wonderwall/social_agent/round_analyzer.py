@@ -8,7 +8,7 @@ After each simulation round, the analyzer:
 4. Generates a world-state summary (sentiment distribution, viral content)
 5. Accumulates snapshots into a SimulationTrajectory for the report agent
 
-This runs in the simulation scripts, NOT inside Wonderwall's OasisEnv,
+This runs in the simulation scripts, NOT inside Wonderwall's WonderwallEnv,
 keeping the upstream framework untouched.
 """
 

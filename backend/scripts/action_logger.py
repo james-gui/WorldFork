@@ -1,6 +1,6 @@
 """
 Action logger
-Records each Agent's actions during OASIS simulation for backend monitoring
+Records each Agent's actions during Wonderwall simulation for backend monitoring
 
 Log structure:
     sim_xxx/
