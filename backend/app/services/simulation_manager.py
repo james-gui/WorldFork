@@ -34,10 +34,12 @@ class SimulationStatus(str, Enum):
     FAILED = "failed"
 
 
-class PlatformType(str, Enum):
-    """Platform type"""
-    TWITTER = "twitter"
-    REDDIT = "reddit"
+# NOTE: Platform membership for a simulation is expressed on SimulationState
+# via the ``enable_twitter`` / ``enable_reddit`` / ``enable_polymarket`` flags
+# and via plain string fields (e.g. ``twitter_status``). The run scripts use
+# ``wonderwall.DefaultPlatformType`` when handing off to the OASIS framework.
+# A previous local ``PlatformType`` enum here was dead code and has been
+# removed — re-add only when MiroShark-side code actually needs an enum.
 
 
 @dataclass
