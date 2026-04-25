@@ -1,0 +1,50 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
+
+# Node
+node_modules/
+.next/
+out/
+.pnpm-store/
+.turbo/
+.vercel/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Run ledger (local data)
+runs/
+data/
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+docker-data/

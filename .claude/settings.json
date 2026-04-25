@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(runpodctl gpu *)",
+      "Bash(nvidia-smi *)",
+      "Bash(runpodctl datacenter list *)",
+      "Bash(runpodctl pod list *)",
+      "Bash(runpodctl pod get *)"
+    ]
+  }
+}
