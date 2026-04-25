@@ -11,13 +11,14 @@ RUN pip install uv
 
 WORKDIR /app
 
-# Install Python dependencies first (layer caching)
+# Copy project metadata and source before installing the editable local package.
+# Hatchling needs backend/app to exist when resolving ".[dev]".
 COPY pyproject.toml ./
-RUN uv pip install --system ".[dev]"
-
-# Copy application source
 COPY backend/ ./backend/
 COPY source_of_truth/ ./source_of_truth/
+COPY infra/ ./infra/
+
+RUN uv pip install --system ".[dev]"
 
 EXPOSE 8000
 

@@ -7,6 +7,7 @@ Endpoints:
   POST /api/multiverse/{big_bang_id}/prune
   POST /api/multiverse/{big_bang_id}/focus-branch
   POST /api/multiverse/{big_bang_id}/compare
+  POST /api/multiverse/{big_bang_id}/simulate-next-tick
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from backend.app.core.clock import now_utc
 from backend.app.core.db import get_session
 from backend.app.models.branches import BranchNodeModel
 from backend.app.models.runs import BigBangRunModel
+from backend.app.models.settings import BranchPolicySettingModel
 from backend.app.models.universes import UniverseModel
 from backend.app.schemas.api import (
     CompareRequest,
@@ -33,6 +35,7 @@ from backend.app.schemas.api import (
     PruneRequest,
     PruneResponse,
 )
+from backend.app.workers.scheduler import enqueue, make_envelope
 
 router = APIRouter(prefix="/api/multiverse", tags=["multiverse"])
 
@@ -98,7 +101,10 @@ def _build_tree_nodes_and_edges(
                 current_tick=u.current_tick,
                 latest_metrics=dict(u.latest_metrics or {}),
                 branch_reason=u.branch_reason or "",
+                branch_delta=dict(u.branch_delta or {}),
+                lineage_path=list(u.lineage_path or []),
                 descendant_count=desc_count,
+                created_at=u.created_at,
             )
         )
         if u.parent_universe_id:
@@ -162,12 +168,6 @@ async def get_metrics(big_bang_id: str, session: DbSession) -> MultiverseMetrics
     """Return aggregated KPIs for the multiverse."""
     await _get_run_or_404(big_bang_id, session)
 
-    # Total universes.
-    total_stmt = select(func.count(UniverseModel.universe_id)).where(
-        UniverseModel.big_bang_id == big_bang_id
-    )
-    (await session.execute(total_stmt)).scalar_one()
-
     # Active universes.
     active_stmt = select(func.count(UniverseModel.universe_id)).where(
         UniverseModel.big_bang_id == big_bang_id,
@@ -195,8 +195,19 @@ async def get_metrics(big_bang_id: str, session: DbSession) -> MultiverseMetrics
     )
     total_branches = (await session.execute(branch_stmt)).scalar_one()
 
-    # Budget percentage — placeholder (requires settings which B5-B owns).
-    branch_budget_pct = 0.0
+    policy = await session.get(BranchPolicySettingModel, "default")
+    branch_budget_pct = (
+        round((total_branches / policy.max_total_branches) * 100, 2)
+        if policy is not None and policy.max_total_branches > 0
+        else 0.0
+    )
+    branch_budget_limit = policy.max_total_branches if policy is not None else 0
+
+    max_tick_stmt = select(func.max(UniverseModel.current_tick)).where(
+        UniverseModel.big_bang_id == big_bang_id
+    )
+    max_tick = (await session.execute(max_tick_stmt)).scalar_one() or 0
+    active_branches_per_tick = round(total_branches / max(1, int(max_tick)), 2)
 
     return MultiverseMetricsResponse(
         big_bang_id=big_bang_id,
@@ -205,7 +216,67 @@ async def get_metrics(big_bang_id: str, session: DbSession) -> MultiverseMetrics
         max_depth=max_depth,
         candidate_branches=candidate,
         branch_budget_pct=branch_budget_pct,
+        branch_budget_used=total_branches,
+        branch_budget_limit=branch_budget_limit,
+        active_branches_per_tick=active_branches_per_tick,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/multiverse/{big_bang_id}/simulate-next-tick
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{big_bang_id}/simulate-next-tick", status_code=202)
+async def simulate_next_tick(big_bang_id: str, session: DbSession) -> dict:
+    """Queue one tick for every active universe in a run."""
+    run = await _get_run_or_404(big_bang_id, session)
+    result = await session.execute(
+        select(UniverseModel).where(
+            UniverseModel.big_bang_id == big_bang_id,
+            UniverseModel.status == "active",
+        )
+    )
+    universes = list(result.scalars().all())
+    job_ids: list[str] = []
+    failed: list[dict] = []
+    skipped: list[dict] = []
+    for uni in universes:
+        target_tick = uni.current_tick + 1
+        if target_tick > run.max_ticks:
+            skipped.append(
+                {
+                    "universe_id": uni.universe_id,
+                    "reason": "run max_ticks reached",
+                    "current_tick": uni.current_tick,
+                    "max_ticks": run.max_ticks,
+                }
+            )
+            continue
+        envelope = make_envelope(
+            job_type="simulate_universe_tick",
+            run_id=big_bang_id,
+            universe_id=uni.universe_id,
+            tick=target_tick,
+            payload={
+                "run_id": big_bang_id,
+                "universe_id": uni.universe_id,
+                "tick": target_tick,
+            },
+        )
+        try:
+            await enqueue(envelope)
+            job_ids.append(envelope.job_id)
+        except Exception as exc:
+            failed.append({"universe_id": uni.universe_id, "error": str(exc)[:300]})
+
+    return {
+        "big_bang_id": big_bang_id,
+        "enqueued": len(job_ids),
+        "job_ids": job_ids,
+        "failed": failed,
+        "skipped": skipped,
+    }
 
 
 # ---------------------------------------------------------------------------

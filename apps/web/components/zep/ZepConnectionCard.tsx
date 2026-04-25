@@ -14,6 +14,7 @@ interface ZepConnectionCardProps {
   onUrlChange?: (v: string) => void;
   region?: string;
   onRegionChange?: (v: string) => void;
+  disabledMode?: boolean;
 }
 
 export function ZepConnectionCard({
@@ -21,14 +22,22 @@ export function ZepConnectionCard({
   onUrlChange,
   region = 'us-east-1',
   onRegionChange,
+  disabledMode = false,
 }: ZepConnectionCardProps) {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const testZep = useTestZep();
 
   async function handleTest() {
+    if (disabledMode) {
+      setTestStatus('ok');
+      return;
+    }
     setTestStatus('testing');
     try {
-      await testZep.mutateAsync();
+      const result = await testZep.mutateAsync();
+      if (!result.ok) {
+        throw new Error(result.error ?? 'Zep healthcheck failed');
+      }
       setTestStatus('ok');
     } catch {
       setTestStatus('error');
@@ -50,6 +59,7 @@ export function ZepConnectionCard({
             value={url}
             onChange={(e) => onUrlChange?.(e.target.value)}
             className="h-8 text-sm font-mono"
+            disabled={disabledMode}
           />
         </div>
 
@@ -66,7 +76,7 @@ export function ZepConnectionCard({
         <div className="space-y-1.5">
           <Label className="text-xs">Region</Label>
           <Select value={region} onValueChange={onRegionChange}>
-            <SelectTrigger className="h-8 text-sm">
+            <SelectTrigger className="h-8 text-sm" disabled={disabledMode}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -79,12 +89,17 @@ export function ZepConnectionCard({
         </div>
 
         <div className="flex items-center gap-2 pt-1">
-          <Button size="sm" variant="outline" onClick={handleTest} disabled={testStatus === 'testing'}>
+          <Button size="sm" variant="outline" onClick={handleTest} disabled={disabledMode || testStatus === 'testing'}>
             {testStatus === 'testing' && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-            Test connection
+            {disabledMode ? 'Local mode active' : 'Test connection'}
           </Button>
 
-          {testStatus === 'ok' && (
+          {disabledMode ? (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <XCircle className="h-3.5 w-3.5" />
+              Zep disabled
+            </div>
+          ) : testStatus === 'ok' && (
             <div className="flex items-center gap-1 text-xs text-green-600">
               <CheckCircle2 className="h-3.5 w-3.5" />
               Connected

@@ -23,6 +23,8 @@ JobType = Literal[
     "build_review_index",
     "export_run",
     "apply_tick_results",
+    "aggregate_run_results",
+    "force_deviation",
 ]
 
 JobPriority = Literal["p0", "p1", "p2", "p3", "dead_letter"]

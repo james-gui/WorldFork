@@ -15,16 +15,19 @@ Tasks
 -----
 - ``initialize_big_bang`` (P1)
 - ``simulate_universe_tick`` (P0)  — the §11.1 loop entry
-- ``apply_tick_results`` (P0)      — chord callback
+  - ``apply_tick_results`` (P0)      — compatibility callback
 - ``agent_deliberation_batch`` (P1) — one packet → one parsed dict
 - ``branch_universe`` (P0)
 - ``sync_zep_memory`` (P2)
+- ``aggregate_run_results`` (P2)
 - ``export_run`` (P3)
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from backend.app.core.logging import get_logger
 from backend.app.schemas.jobs import JobEnvelope
@@ -110,6 +113,51 @@ async def _build_routing_and_limiter(session):
     return routing, limiter
 
 
+async def _run_tracked(
+    env: JobEnvelope,
+    impl: Callable[[JobEnvelope], Awaitable[dict]],
+) -> dict:
+    """Run one envelope and mirror lifecycle state into the jobs table."""
+    from backend.app.workers import scheduler
+
+    await scheduler.mark_started(env.job_id)
+    try:
+        result = await impl(env)
+    except Exception as exc:
+        if env.job_type == "simulate_universe_tick" and env.universe_id and env.tick is not None:
+            try:
+                await scheduler.clear_running(
+                    f"sim:{env.run_id}:{env.universe_id}:t{env.tick}:a{env.attempt_number}"
+                )
+            except Exception:
+                pass
+        await scheduler.mark_failed(env.job_id, str(exc))
+        raise
+
+    if isinstance(result, dict):
+        status = str(result.get("status") or "").lower()
+        if status == "failed" or status.startswith("no_") or status.endswith("_failure"):
+            idem_key = result.get("idempotency_key")
+            if isinstance(idem_key, str):
+                try:
+                    await scheduler.clear_running(idem_key)
+                except Exception:
+                    pass
+            await scheduler.mark_failed(env.job_id, str(result.get("error") or status))
+            return result
+
+    artifact_path: str | None = None
+    maybe_result: Any = result.get("result") if isinstance(result, dict) else None
+    if isinstance(maybe_result, str):
+        artifact_path = maybe_result
+    await scheduler.mark_succeeded(
+        env.job_id,
+        result_summary=result if isinstance(result, dict) else {"result": result},
+        artifact_path=artifact_path,
+    )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # initialize_big_bang
 # ---------------------------------------------------------------------------
@@ -131,7 +179,7 @@ def initialize_big_bang_task(self, envelope_json: str):  # type: ignore[no-untyp
     """
     env = JobEnvelope.model_validate_json(envelope_json)
     try:
-        return asyncio.run(_initialize_big_bang_impl(env))
+        return asyncio.run(_run_tracked(env, _initialize_big_bang_impl))
     except Exception as exc:  # noqa: BLE001
         raise self.retry(exc=exc, countdown=30)  # noqa: B904
 
@@ -148,10 +196,20 @@ async def _initialize_big_bang_impl(env: JobEnvelope) -> dict:
     from backend.app.workers import scheduler
 
     payload = env.payload or {}
+    uploaded_docs = list(payload.get("uploaded_docs") or [])
+    if not uploaded_docs:
+        uploaded_docs = [
+            {
+                "name": str(doc_id),
+                "content_text": "",
+                "content_type": "uploaded_doc_id",
+            }
+            for doc_id in list(payload.get("uploaded_doc_ids") or [])
+        ]
     init_input = InitializerInput(
         scenario_text=str(payload.get("scenario_text", "")),
         display_name=str(payload.get("display_name", "Untitled")),
-        uploaded_docs=list(payload.get("uploaded_docs") or []),
+        uploaded_docs=uploaded_docs,
         time_horizon_label=str(payload.get("time_horizon_label", "1 month")),
         tick_duration_minutes=int(payload.get("tick_duration_minutes", 60)),
         max_ticks=int(payload.get("max_ticks", 30)),
@@ -160,6 +218,8 @@ async def _initialize_big_bang_impl(env: JobEnvelope) -> dict:
         ),
         provider_snapshot_id=payload.get("provider_snapshot_id"),
         created_by_user_id=payload.get("created_by_user_id"),
+        big_bang_id=env.run_id,
+        root_universe_id=payload.get("root_universe_id"),
     )
 
     session_cm = await _open_session()
@@ -214,7 +274,7 @@ def simulate_universe_tick_task(self, envelope_json: str):  # type: ignore[no-un
     """Run the §11.1 tick loop for one (universe, tick) pair."""
     env = JobEnvelope.model_validate_json(envelope_json)
     try:
-        return asyncio.run(_simulate_universe_tick_impl(env))
+        return asyncio.run(_run_tracked(env, _simulate_universe_tick_impl))
     except Exception as exc:  # noqa: BLE001
         raise self.retry(exc=exc, countdown=10)  # noqa: B904
 
@@ -281,8 +341,8 @@ def apply_tick_results_task(  # type: ignore[no-untyped-def]
     """Chord callback — receives the parsed dicts from N agent_deliberation_batch
     children and resumes the §11.1 apply phase.
 
-    For now, the apply phase happens inline in :func:`run_tick`; this stub
-    records the callback shape for the future split-task implementation.
+    The apply phase currently happens inline in :func:`run_tick`; this callback
+    preserves compatibility with split-task deployments.
     """
     logger.info(
         "apply_tick_results",
@@ -320,7 +380,7 @@ def agent_deliberation_batch_task(self, envelope_json: str):  # type: ignore[no-
     """
     env = JobEnvelope.model_validate_json(envelope_json)
     try:
-        return asyncio.run(_agent_deliberation_batch_impl(env))
+        return asyncio.run(_run_tracked(env, _agent_deliberation_batch_impl))
     except Exception as exc:  # noqa: BLE001
         raise self.retry(exc=exc, countdown=5)  # noqa: B904
 
@@ -380,7 +440,7 @@ def branch_universe_task(self, envelope_json: str):  # type: ignore[no-untyped-d
     """Commit a child universe via :func:`commit_branch`."""
     env = JobEnvelope.model_validate_json(envelope_json)
     try:
-        return asyncio.run(_branch_universe_impl(env))
+        return asyncio.run(_run_tracked(env, _branch_universe_impl))
     except Exception as exc:  # noqa: BLE001
         raise self.retry(exc=exc, countdown=15)  # noqa: B904
 
@@ -417,8 +477,17 @@ async def _branch_universe_impl(env: JobEnvelope) -> dict:
             reason=reason,
             policy_decision=policy_decision,
             ledger=ledger,
+            enqueue_first_tick=False,
         )
         await session.commit()
+        if result.status == "active":
+            from backend.app.branching.branch_engine import enqueue_first_child_tick
+
+            result.enqueued = await enqueue_first_child_tick(
+                run_id=env.run_id,
+                child_universe_id=result.child_universe_id,
+                tick=result.branch_from_tick + 1,
+            )
 
     return {
         "child_universe_id": result.child_universe_id,
@@ -439,8 +508,9 @@ def sync_zep_memory_task(self, envelope_json: str):  # type: ignore[no-untyped-d
     """Sync recent memory writes to Zep (best-effort)."""
     env = JobEnvelope.model_validate_json(envelope_json)
     try:
-        return asyncio.run(_sync_zep_memory_impl(env))
+        return asyncio.run(_run_tracked(env, _sync_zep_memory_impl))
     except Exception as exc:  # noqa: BLE001
+        asyncio.run(_mark_failed_best_effort(env.job_id, exc))
         _log.warning("sync_zep_memory failed: %s", exc)
         return {"status": "failed", "error": str(exc)}
 
@@ -473,6 +543,83 @@ async def _sync_zep_memory_impl(env: JobEnvelope) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# aggregate_run_results (P2)
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(bind=True, name="aggregate_run_results", queue="p2")
+def aggregate_run_results_task(self, envelope_json: str):  # type: ignore[no-untyped-def]
+    """Synthesize the terminal results dashboard for one run."""
+    env = JobEnvelope.model_validate_json(envelope_json)
+    try:
+        return asyncio.run(_run_tracked(env, _aggregate_run_results_impl))
+    except Exception as exc:  # noqa: BLE001
+        asyncio.run(_mark_failed_best_effort(env.job_id, exc))
+        return {"status": "failed", "error": str(exc)}
+
+
+async def _aggregate_run_results_impl(env: JobEnvelope) -> dict:
+    from backend.app.providers import ensure_providers_in_loop
+    from backend.app.core.config import settings as _settings
+    await ensure_providers_in_loop(_settings)
+    from backend.app.models.results import RunResultModel
+    from backend.app.models.runs import BigBangRunModel
+    from backend.app.results.aggregator import aggregate_run_results, ledger_for_run_folder
+
+    session_cm = await _open_session()
+    async with session_cm as session:
+        run = await session.get(BigBangRunModel, env.run_id)
+        if run is None:
+            return {"status": "failed", "error": f"run {env.run_id!r} not found"}
+        result_row = await session.get(RunResultModel, env.run_id)
+        if result_row is not None:
+            result_row.job_id = env.job_id
+            result_row.status = "running"
+            result_row.error = None
+            await session.commit()
+
+        routing, limiter = await _build_routing_and_limiter(session)
+        ledger = ledger_for_run_folder(run.run_folder_path, env.run_id)
+        result = await aggregate_run_results(
+            session=session,
+            run_id=env.run_id,
+            routing=routing,
+            limiter=limiter,
+            ledger=ledger,
+        )
+        result_row = await session.get(RunResultModel, env.run_id)
+        if result_row is not None:
+            result_row.job_id = env.job_id
+            await session.commit()
+        return result
+
+
+# ---------------------------------------------------------------------------
+# force_deviation (P0)
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(bind=True, name="force_deviation", queue="p0")
+def force_deviation_task(self, envelope_json: str):  # type: ignore[no-untyped-def]
+    """Compatibility task name for queued forced-deviation jobs.
+
+    The API currently commits forced deviations inline so users get the child id
+    immediately. This task remains routed for retry/replay tooling and returns
+    the payload when a caller deliberately enqueues it.
+    """
+    env = JobEnvelope.model_validate_json(envelope_json)
+    try:
+        return asyncio.run(_run_tracked(env, _force_deviation_impl))
+    except Exception as exc:  # noqa: BLE001
+        asyncio.run(_mark_failed_best_effort(env.job_id, exc))
+        return {"status": "failed", "error": str(exc)}
+
+
+async def _force_deviation_impl(env: JobEnvelope) -> dict:
+    return {"status": "no_op_inline_api_owns_commit", "payload": env.payload}
+
+
+# ---------------------------------------------------------------------------
 # export_run (P3)
 # ---------------------------------------------------------------------------
 
@@ -485,22 +632,42 @@ def export_run_task(self, envelope_json: str):  # type: ignore[no-untyped-def]
     """
     env = JobEnvelope.model_validate_json(envelope_json)
     try:
-        return asyncio.run(_export_run_impl(env))
+        return asyncio.run(_run_tracked(env, _export_run_impl))
     except Exception as exc:  # noqa: BLE001
+        asyncio.run(_mark_failed_best_effort(env.job_id, exc))
         return {"status": "failed", "error": str(exc)}
 
 
+async def _mark_failed_best_effort(job_id: str, exc: Exception) -> None:
+    from backend.app.workers import scheduler
+
+    await scheduler.mark_failed(job_id, str(exc))
+
+
 async def _export_run_impl(env: JobEnvelope) -> dict:
+    from pathlib import Path
+
     payload = env.payload or {}
     output_path = payload.get("output_path")
 
     try:
-        from backend.app.storage.export import export_run as _export_run
+        from backend.app.models.runs import BigBangRunModel
+        from backend.app.storage.export import export_run_to_zip
     except Exception as exc:
         return {"status": "no_export_module", "error": str(exc)}
 
     try:
-        result = _export_run(env.run_id, output_path=output_path)
+        session_cm = await _open_session()
+        async with session_cm as session:
+            run = await session.get(BigBangRunModel, env.run_id)
+            if run is None:
+                return {"status": "failed", "error": f"run {env.run_id!r} not found"}
+            if not run.run_folder_path:
+                return {"status": "failed", "error": "run has no ledger folder yet"}
+            run_folder = Path(run.run_folder_path)
+
+        dest = Path(output_path) if output_path else run_folder / "exports" / f"{env.run_id}.zip"
+        result = export_run_to_zip(run_folder=run_folder, dest=dest, verify=True)
     except Exception as exc:
         return {"status": "failed", "error": str(exc)}
 
@@ -516,5 +683,7 @@ __all__ = [
     "agent_deliberation_batch_task",
     "branch_universe_task",
     "sync_zep_memory_task",
+    "aggregate_run_results_task",
+    "force_deviation_task",
     "export_run_task",
 ]

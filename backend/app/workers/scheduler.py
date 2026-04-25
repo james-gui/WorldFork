@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from sqlalchemy.exc import IntegrityError
+
 from backend.app.schemas.jobs import JobEnvelope, JobType
 from backend.app.workers.queues import Queues, queue_for_job
 
@@ -83,22 +85,117 @@ async def enqueue(
 
     Returns the Celery task id (same as ``envelope.job_id``).
     """
+    await mark_enqueued(envelope)
+
     # Deferred import to avoid circular dependency at module load time.
     from backend.app.workers.celery_app import celery_app
 
     task_name = envelope.job_type
-    q = queue_for_job(envelope.job_type).value
+    allowed_queues = {q.value for q in Queues}
+    q = envelope.priority if envelope.priority in allowed_queues else queue_for_job(envelope.job_type).value
 
-    async_result = celery_app.send_task(
-        task_name,
-        args=[envelope.model_dump_json()],
-        queue=q,
-        task_id=envelope.job_id,
-        eta=eta,
-        countdown=countdown,
-        headers={"idempotency_key": envelope.idempotency_key},
-    )
+    try:
+        async_result = celery_app.send_task(
+            task_name,
+            args=[envelope.model_dump_json()],
+            queue=q,
+            task_id=envelope.job_id,
+            eta=eta,
+            countdown=countdown,
+            headers={"idempotency_key": envelope.idempotency_key},
+        )
+    except Exception as exc:
+        await mark_failed(envelope.job_id, str(exc))
+        raise
     return async_result.id
+
+
+async def mark_enqueued(envelope: JobEnvelope) -> None:
+    """Best-effort DB mirror for an enqueued job."""
+    try:
+        from backend.app.core.db import SessionLocal
+        from backend.app.models.jobs import JobModel
+
+        async with SessionLocal() as session:
+            existing = await session.get(JobModel, envelope.job_id)
+            if existing is None:
+                existing = JobModel.from_schema(envelope)
+                session.add(existing)
+            else:
+                existing.job_type = envelope.job_type
+                existing.priority = envelope.priority
+                existing.run_id = envelope.run_id
+                existing.universe_id = envelope.universe_id
+                existing.tick = envelope.tick
+                existing.attempt_number = envelope.attempt_number
+                existing.idempotency_key = envelope.idempotency_key
+                existing.artifact_path = envelope.artifact_path
+                existing.payload = dict(envelope.payload)
+                existing.created_at = envelope.created_at
+            existing.status = "queued"
+            existing.enqueued_at = eta_or_now(envelope.enqueued_at)
+            existing.error = None
+            await session.commit()
+    except IntegrityError:
+        # Re-enqueues can hit the idempotency unique key. The first row remains
+        # the authoritative monitor record for that idempotency key.
+        try:
+            await session.rollback()  # type: ignore[name-defined]
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+async def mark_started(job_id: str) -> None:
+    await _patch_job(job_id, status="running", started_at=datetime.now(tz=UTC))
+
+
+async def mark_succeeded(
+    job_id: str,
+    *,
+    result_summary: dict | None = None,
+    artifact_path: str | None = None,
+) -> None:
+    await _patch_job(
+        job_id,
+        status="succeeded",
+        finished_at=datetime.now(tz=UTC),
+        result_summary=result_summary,
+        artifact_path=artifact_path,
+        error=None,
+    )
+
+
+async def mark_failed(job_id: str, error: str) -> None:
+    await _patch_job(
+        job_id,
+        status="failed",
+        finished_at=datetime.now(tz=UTC),
+        error=error[:4000],
+    )
+
+
+def eta_or_now(value: datetime | None) -> datetime:
+    return value or datetime.now(tz=UTC)
+
+
+async def _patch_job(job_id: str, **fields) -> None:
+    """Best-effort update of one job monitor row."""
+    try:
+        from backend.app.core.db import SessionLocal
+        from backend.app.models.jobs import JobModel
+
+        async with SessionLocal() as session:
+            row = await session.get(JobModel, job_id)
+            if row is None:
+                return
+            for key, value in fields.items():
+                if hasattr(row, key):
+                    setattr(row, key, value)
+            await session.commit()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +239,11 @@ async def get_done_result(idempotency_key: str) -> str | None:
 
     redis = get_redis_client()
     return await redis.get(f"done:{idempotency_key}")
+
+
+async def clear_running(idempotency_key: str) -> None:
+    """Clear an in-progress idempotency claim while preserving done markers."""
+    from backend.app.core.redis_client import get_redis_client
+
+    redis = get_redis_client()
+    await redis.delete(f"idem:{idempotency_key}")

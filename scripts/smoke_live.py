@@ -1,7 +1,7 @@
-"""Live smoke test against real OpenRouter + Zep.
+"""Live smoke test against real OpenRouter.
 
 Run: .venv/bin/python -m scripts.smoke_live
-Requires OPENROUTER_API_KEY and (optionally) ZEP_API_KEY in .env.
+Requires OPENROUTER_API_KEY in .env. Zep is intentionally disabled by default.
 """
 import asyncio, os, sys
 from pathlib import Path
@@ -14,7 +14,6 @@ from backend.app.providers import call_with_policy
 from backend.app.providers.routing import RoutingTable
 from backend.app.providers.rate_limits import ProviderRateLimiter
 from backend.app.schemas.llm import PromptPacket, ModelConfig, Clock
-from backend.app.memory.zep_adapter import ZepMemoryProvider
 from backend.app.memory.local import LocalMemoryProvider
 
 async def main():
@@ -36,7 +35,7 @@ async def main():
     assert health.ok, f"healthcheck failed: {health}"
 
     # 2. Tiny structured generation
-    print("\n[2] Structured generation (haiku-style)")
+    print(f"\n[2] Structured generation ({settings.default_model})")
     packet = PromptPacket(
         system="You are a concise assistant. Return JSON: {\"answer\": string, \"confidence\": number}.",
         clock=Clock(current_tick=0, tick_duration_minutes=60, elapsed_minutes=0,
@@ -58,7 +57,7 @@ async def main():
     )
     cfg = ModelConfig(
         provider="openrouter",
-        model="openai/gpt-4o-mini",
+        model=settings.default_model,
         fallback_model=None,
         temperature=0.3,
         top_p=1.0,
@@ -74,11 +73,11 @@ async def main():
     assert result.parsed_json is not None
     assert "answer" in result.parsed_json
 
-    # 3. Zep memory roundtrip (if key present)
-    if settings.zep_api_key and settings.zep_api_key != "z_REPLACE_ME":
+    # 3. Local memory roundtrip. Zep is never used unless explicitly enabled.
+    if settings.zep_enabled and settings.zep_api_key and settings.zep_api_key != "z_REPLACE_ME":
         print("\n[3] Zep memory roundtrip")
         import uuid
-        from backend.app.memory.local import LocalMemoryProvider
+        from backend.app.memory.zep_adapter import ZepMemoryProvider
         local_fb = LocalMemoryProvider()
         zep = ZepMemoryProvider(api_key=settings.zep_api_key, mode="cohort_memory", local_fallback=local_fb)
         h = await zep.healthcheck()
@@ -94,7 +93,10 @@ async def main():
             print(f"  context_len={len(ctx)} chars")
             print(f"  context_excerpt={ctx[:120]!r}")
     else:
-        print("\n[3] Zep skipped (no key)")
+        print("\n[3] Zep skipped (disabled); local memory active")
+        local = LocalMemoryProvider()
+        health = await local.healthcheck()
+        assert health.get("ok", False)
 
     print("\n== Smoke OK ==")
 

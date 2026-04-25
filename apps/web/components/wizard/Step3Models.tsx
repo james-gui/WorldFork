@@ -15,11 +15,13 @@ import { Badge } from '@/components/ui/badge';
 import type { WizardFormValues } from './BigBangWizard';
 
 const MODELS = [
-  { value: 'openai/gpt-4o', label: 'GPT-4o', badge: 'Default' },
-  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', badge: 'Fast' },
-  { value: 'anthropic/claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', badge: 'High quality' },
-  { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku', badge: 'Fast' },
-  { value: 'mistralai/mistral-large', label: 'Mistral Large', badge: null },
+  { value: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite', badge: 'Fast' },
+  { value: 'deepseek/deepseek-v3.2', label: 'DeepSeek V3.2', badge: 'Agents' },
+  { value: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', badge: 'V4' },
+  { value: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash', badge: 'Fast' },
+  { value: 'openai/gpt-5.5', label: 'GPT-5.5', badge: 'God' },
+  { value: 'openai/gpt-5.4', label: 'GPT-5.4', badge: 'Fallback' },
+  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', badge: 'Fallback' },
 ];
 
 const JOB_TYPES = [
@@ -52,7 +54,7 @@ export function Step3Models() {
               <p className="text-xs text-muted-foreground">{job.description}</p>
             </div>
             <Select
-              value={models?.[job.id] ?? 'openai/gpt-4o'}
+              value={models?.[job.id] ?? (job.id === 'godReview' ? 'openai/gpt-5.5' : 'deepseek/deepseek-v3.2')}
               onValueChange={(v) =>
                 setValue('modelRouting', { ...models, [job.id]: v })
               }

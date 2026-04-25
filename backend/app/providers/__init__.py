@@ -11,6 +11,7 @@ through. It enforces:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import random
@@ -127,8 +128,12 @@ async def ensure_providers_in_loop(settings) -> None:  # type: ignore[no-untyped
 # Coarse $/1K-token table for the OpenRouter-routed defaults. When unknown we
 # return 0.0 — fail-open so a missing entry never blocks a call.
 _PRICE_PER_1K: dict[str, float] = {
-    "openai/gpt-5.4": 0.005,
-    "openai/gpt-5.4-mini": 0.00015,
+    "deepseek/deepseek-v3.2": 0.00026,
+    "deepseek/deepseek-v4-pro": 0.00174,
+    "deepseek/deepseek-v4-flash": 0.0,
+    "openai/gpt-5.5": 0.0,
+    "openai/gpt-5.4": 0.0,
+    "openai/gpt-4o-mini": 0.00015,
     "anthropic/claude-3-5-sonnet": 0.003,
     "anthropic/claude-3-5-haiku": 0.0008,
 }
@@ -214,21 +219,60 @@ def safe_noop_result(
 # Persistence helper
 # ---------------------------------------------------------------------------
 
-def _persist_call(
+async def _persist_call(
     ledger: Ledger | None,
     run_id: str,
     universe_id: str | None,
     tick: int | None,
     result: LLMResult,
     prompt: PromptPacket,
+    job_type: JobType,
 ) -> None:
     """Best-effort persist; never raise into the orchestrator."""
-    if ledger is None:
-        return
+    if ledger is not None:
+        try:
+            BaseProvider._persist_call(ledger, run_id, universe_id, tick, result, prompt)
+        except Exception as exc:  # pragma: no cover — paranoid
+            logger.warning("ledger persist failed for call %s: %s", result.call_id, exc)
+
     try:
-        BaseProvider._persist_call(ledger, run_id, universe_id, tick, result, prompt)
-    except Exception as exc:  # pragma: no cover — paranoid
-        logger.warning("ledger persist failed for call %s: %s", result.call_id, exc)
+        from backend.app.core.db import SessionLocal
+        from backend.app.models.llm_calls import LLMCallModel
+
+        prompt_dump = prompt.model_dump(mode="json")
+        prompt_hash = hashlib.sha256(
+            json.dumps(prompt_dump, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        if universe_id is not None and tick is not None:
+            tick_prefix = f"universes/{universe_id}/ticks/tick_{tick:03d}"
+            prompt_packet_path = f"{tick_prefix}/visible_packets/{prompt.actor_id}.json"
+            response_path = f"{tick_prefix}/llm_calls/{result.call_id}.json"
+            parsed_path = f"{tick_prefix}/parsed_decisions.json"
+        else:
+            prompt_packet_path = f"runs/{run_id}/llm_calls/{result.call_id}/prompt.json"
+            response_path = f"runs/{run_id}/llm_calls/{result.call_id}/response.json"
+            parsed_path = None
+
+        async with SessionLocal() as session:
+            existing = await session.get(LLMCallModel, result.call_id)
+            if existing is None:
+                session.add(
+                    LLMCallModel.from_schema(
+                        result,
+                        job_type=job_type,
+                        prompt_packet_path=prompt_packet_path,
+                        prompt_hash=prompt_hash,
+                        response_path=response_path,
+                        parsed_path=parsed_path,
+                        run_id=run_id,
+                        universe_id=universe_id,
+                        tick=tick,
+                        status="succeeded",
+                    )
+                )
+            await session.commit()
+    except Exception as exc:  # pragma: no cover — logging mirror must not block sim
+        logger.debug("llm_calls DB persist skipped for %s: %s", result.call_id, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -293,14 +337,41 @@ async def call_with_policy(
                     est_tokens, is_branch_job=is_branch_job, is_p0=is_p0
                 ) as ticket:
                     t0 = perf_counter()
-                    result = await provider.generate_structured(prompt, cfg)
+                    result = await asyncio.wait_for(
+                        provider.generate_structured(prompt, cfg),
+                        timeout=cfg.timeout_seconds,
+                    )
                     _ = perf_counter() - t0
                 # Outside the gate so refunds happen ASAP.
-                await limiter.record_actual_usage(
-                    ticket, result.total_tokens, result.cost_usd or 0.0
-                )
-                _persist_call(ledger, run_id, universe_id, tick, result, prompt)
+                try:
+                    await asyncio.wait_for(
+                        limiter.record_actual_usage(
+                            ticket, result.total_tokens, result.cost_usd or 0.0
+                        ),
+                        timeout=10.0,
+                    )
+                except Exception as exc:
+                    logger.warning("provider usage accounting skipped: %s", exc)
+                try:
+                    await asyncio.wait_for(
+                        _persist_call(ledger, run_id, universe_id, tick, result, prompt, job_type),
+                        timeout=30.0,
+                    )
+                except Exception as exc:
+                    logger.warning("provider call persistence skipped: %s", exc)
                 return result
+
+            except asyncio.TimeoutError as exc:
+                last_exc = ProviderTimeoutError(
+                    f"provider call exceeded {cfg.timeout_seconds}s timeout"
+                )
+                if attempts >= 2:
+                    logger.warning(
+                        "provider %s timed out twice on %s; trying fallback",
+                        cfg.provider, cfg.model,
+                    )
+                    break
+                continue
 
             except RateLimitError as exc:
                 last_exc = exc
@@ -332,7 +403,16 @@ async def call_with_policy(
                     "invalid JSON after one repair on %s; emitting safe no-op",
                     cfg.model,
                 )
-                break
+                result = safe_noop_result(
+                    provider=cfg.provider,
+                    model=cfg.model,
+                    actor_kind=prompt.actor_kind,
+                    error_message=str(last_exc),
+                )
+                await _persist_call(
+                    ledger, run_id, universe_id, tick, result, prompt, job_type
+                )
+                return result
 
             except BudgetExceededError:
                 raise
@@ -363,7 +443,7 @@ async def call_with_policy(
             actor_kind=prompt.actor_kind,
             error_message=str(last_exc),
         )
-        _persist_call(ledger, run_id, universe_id, tick, result, prompt)
+        await _persist_call(ledger, run_id, universe_id, tick, result, prompt, job_type)
         return result
 
     msg = (
@@ -387,35 +467,45 @@ async def initialize_providers_from_settings(settings) -> None:  # type: ignore[
     """
     from backend.app.providers.openrouter import OpenRouterProvider
 
-    if getattr(settings, "openrouter_api_key", ""):
+    openrouter_base_url = settings.openrouter_base_url
+    openrouter_api_key_env = "OPENROUTER_API_KEY"
+    openrouter_default_model = settings.default_model
+    openrouter_fallback_model = settings.fallback_model
+    openrouter_enabled = True
+
+    try:
+        from backend.app.core.db import SessionLocal
+        from backend.app.models.settings import ProviderSettingModel
+
+        async with SessionLocal() as session:
+            row = await session.get(ProviderSettingModel, "openrouter")
+            if row is not None:
+                openrouter_base_url = row.base_url or openrouter_base_url
+                openrouter_api_key_env = row.api_key_env or openrouter_api_key_env
+                openrouter_default_model = row.default_model or openrouter_default_model
+                openrouter_fallback_model = row.fallback_model or openrouter_fallback_model
+                openrouter_enabled = bool(row.enabled)
+    except Exception:
+        # DB settings are optional at boot; migrations may not have run yet.
+        pass
+
+    import os
+    openrouter_api_key = os.environ.get(openrouter_api_key_env) or getattr(
+        settings, "openrouter_api_key", ""
+    )
+
+    if openrouter_enabled and openrouter_api_key:
         provider = OpenRouterProvider(
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
-            default_model=settings.default_model,
-            fallback_model=settings.fallback_model,
+            api_key=openrouter_api_key,
+            base_url=openrouter_base_url,
+            default_model=openrouter_default_model,
+            fallback_model=openrouter_fallback_model,
             http_referer=settings.openrouter_http_referer,
             x_title=settings.openrouter_title,
         )
         register_provider("openrouter", provider)
-        logger.info("registered OpenRouter provider (model=%s)", settings.default_model)
+        logger.info("registered OpenRouter provider (model=%s)", openrouter_default_model)
 
-    # Optional providers — only register if explicitly configured.
-    import os
-    if os.environ.get("OPENAI_API_KEY"):
-        from backend.app.providers.openai import OpenAIProvider
-        register_provider(
-            "openai",
-            OpenAIProvider(api_key=os.environ["OPENAI_API_KEY"]),
-        )
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        from backend.app.providers.anthropic import AnthropicProvider
-        register_provider(
-            "anthropic",
-            AnthropicProvider(api_key=os.environ["ANTHROPIC_API_KEY"]),
-        )
-    if os.environ.get("OLLAMA_BASE_URL"):
-        from backend.app.providers.ollama import OllamaProvider
-        register_provider(
-            "ollama",
-            OllamaProvider(base_url=os.environ["OLLAMA_BASE_URL"]),
-        )
+    # This deployment is OpenRouter-only. Direct provider adapters stay in the
+    # codebase for future optional use but are intentionally not auto-registered
+    # from ambient environment variables.

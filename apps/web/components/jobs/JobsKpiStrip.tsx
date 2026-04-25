@@ -74,72 +74,67 @@ function KpiCard({ label, value, delta, positive, spark, loading, color = '#6366
   );
 }
 
-const MOCK_SPARK = Array.from({ length: 20 }, (_, i) => ({
-  v: Math.round(5 + Math.random() * 15 + Math.sin(i / 3) * 5),
-}));
-
-const MOCK_FAIL_SPARK = Array.from({ length: 20 }, (_, i) => ({
-  v: Math.round(Math.abs(Math.sin(i / 2) * 3)),
-}));
-
 interface JobsKpiStripProps {
   loading?: boolean;
+  metrics?: {
+    inFlight: number;
+    activeQueues: number;
+    queued: number;
+    failed: number;
+    retries: number;
+    total: number;
+  };
 }
 
-export function JobsKpiStrip({ loading }: JobsKpiStripProps) {
+export function JobsKpiStrip({ loading, metrics }: JobsKpiStripProps) {
+  const data = metrics ?? {
+    inFlight: 0,
+    activeQueues: 0,
+    queued: 0,
+    failed: 0,
+    retries: 0,
+    total: 0,
+  };
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
       <KpiCard
         label="Tasks in flight"
-        value="24"
-        delta="+3 from avg"
-        positive={false}
-        spark={MOCK_SPARK}
+        value={data.inFlight}
         loading={loading}
         color="#6366f1"
       />
       <KpiCard
-        label="Active workers"
-        value="8"
-        delta="of 12 total"
+        label="Active queues"
+        value={data.activeQueues}
         positive={true}
-        spark={MOCK_SPARK}
         loading={loading}
         color="#22c55e"
       />
       <KpiCard
-        label="Avg latency"
-        value="1.84s"
-        delta="-12% vs 1h"
+        label="Queued"
+        value={data.queued}
         positive={true}
-        spark={MOCK_SPARK}
         loading={loading}
         color="#0ea5e9"
       />
       <KpiCard
-        label="Failed (24h)"
-        value="32"
-        delta="+5 since yesterday"
+        label="Failed"
+        value={data.failed}
         positive={false}
-        spark={MOCK_FAIL_SPARK}
         loading={loading}
         color="#ef4444"
       />
       <KpiCard
         label="Retry count"
-        value="11"
-        delta="3 currently active"
+        value={data.retries}
         positive={false}
-        spark={MOCK_FAIL_SPARK}
         loading={loading}
         color="#f97316"
       />
       <KpiCard
-        label="Throughput"
-        value="1,842/min"
-        delta="+8% vs 1h"
+        label="Total rows"
+        value={data.total}
         positive={true}
-        spark={MOCK_SPARK}
         loading={loading}
         color="#8b5cf6"
       />

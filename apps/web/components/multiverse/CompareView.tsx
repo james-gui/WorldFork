@@ -24,19 +24,15 @@ import {
 } from 'recharts';
 import { GitCompare, ArrowLeft } from 'lucide-react';
 import { useMultiverseUIStore } from '@/lib/state/multiverseUiStore';
-import {
-  buildMultiverseTree,
-  STATUS_BADGE_CLS,
-  type MultiverseNodeData,
-} from '@/lib/mocks/multiverse';
+import { STATUS_BADGE_CLS, type MultiverseNodeData } from '@/lib/multiverse/types';
+import { useMultiverseTree } from '@/lib/api/multiverse';
 import { cn } from '@/lib/utils';
 import {
   CompareMetricChart,
   type OverlayMetric,
 } from '@/components/multiverse/CompareMetricChart';
 
-// Per-card mini emotion-trend sparkline.
-function MiniEmotionTrend({ node }: { node: MultiverseNodeData }) {
+function MiniDivergenceTrend({ node }: { node: MultiverseNodeData }) {
   const data = node.divergence_series.map((pt) => ({
     tick: pt.i,
     value: +(pt.v * 100).toFixed(1),
@@ -44,7 +40,7 @@ function MiniEmotionTrend({ node }: { node: MultiverseNodeData }) {
   return (
     <div className="mt-2">
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        Emotion trend (mock)
+        Divergence trend
       </p>
       <ResponsiveContainer width="100%" height={64}>
         <LineChart data={data} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
@@ -127,8 +123,7 @@ function UniverseCard({ node }: UniverseCardProps) {
           </dl>
         </div>
 
-        {/* Mini emotion trend */}
-        <MiniEmotionTrend node={node} />
+        <MiniDivergenceTrend node={node} />
       </CardContent>
     </Card>
   );
@@ -158,24 +153,41 @@ function EmptyCompareState({ runId }: { runId: string }) {
 
 interface CompareViewProps {
   runId: string;
+  initialUniverseIds?: string[];
 }
 
-export function CompareView({ runId }: CompareViewProps) {
+export function CompareView({ runId, initialUniverseIds = [] }: CompareViewProps) {
   const compareSelection = useMultiverseUIStore((s) => s.compareSelection);
   const [metric, setMetric] = React.useState<OverlayMetric>('dominant_emotion');
-
-  // Resolve nodes from mock tree (same seed as multiverse explorer page).
-  const tree = React.useMemo(() => buildMultiverseTree({ bbId: runId }), [runId]);
+  const { data: tree, isLoading, error } = useMultiverseTree(runId);
+  const selectedIds = compareSelection.length >= 2 ? compareSelection : initialUniverseIds;
 
   const selectedNodes = React.useMemo(
     () =>
-      compareSelection
-        .map((id) => tree.nodes.find((n) => n.id === id))
+      selectedIds
+        .map((id) => tree?.nodes.find((n) => n.id === id))
         .filter((n): n is MultiverseNodeData => Boolean(n)),
-    [compareSelection, tree.nodes],
+    [selectedIds, tree?.nodes],
   );
 
-  if (compareSelection.length < 2) {
+  if (selectedIds.length < 2) {
+    return <EmptyCompareState runId={runId} />;
+  }
+
+  if (!tree) {
+    return (
+      <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 p-6 text-center">
+        <h2 className="text-lg font-semibold">
+          {isLoading ? 'Loading branches' : 'Branch data unavailable'}
+        </h2>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          {error ? 'The compare view could not load the persisted multiverse tree.' : 'No persisted multiverse tree is available yet.'}
+        </p>
+      </div>
+    );
+  }
+
+  if (selectedNodes.length < 2) {
     return <EmptyCompareState runId={runId} />;
   }
 

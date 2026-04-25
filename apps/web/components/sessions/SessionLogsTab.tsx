@@ -1,15 +1,28 @@
+'use client';
+
 import * as React from 'react';
 import Link from 'next/link';
 import { ArrowRight, ScrollText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Run } from '@/lib/types/run';
+import { useLogs } from '@/lib/api/logs';
 
 interface SessionLogsTabProps {
   run: Run;
 }
 
 export function SessionLogsTab({ run }: SessionLogsTabProps) {
+  const { data: logs = [] } = useLogs({ runId: run.id, limit: 1000 });
+  const stats = React.useMemo(() => {
+    const totalTokens = logs.reduce((sum, log) => sum + log.total_tokens, 0);
+    const totalCost = logs.reduce((sum, log) => sum + (log.cost_usd ?? 0), 0);
+    const avgLatency = logs.length
+      ? Math.round(logs.reduce((sum, log) => sum + log.latency_ms, 0) / logs.length)
+      : 0;
+    return { totalTokens, totalCost, avgLatency };
+  }, [logs]);
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -39,11 +52,11 @@ export function SessionLogsTab({ run }: SessionLogsTabProps) {
           to filter, search, and inspect every provider call.
         </p>
         <div className="mt-4 rounded-md border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground font-mono">
-          <p className="mb-1 text-foreground font-semibold text-[11px]">Quick stats (placeholder)</p>
-          <p>Total calls: —</p>
-          <p>Total tokens: —</p>
-          <p>Estimated cost: —</p>
-          <p>Avg latency: —</p>
+          <p className="mb-1 text-foreground font-semibold text-[11px]">Quick stats</p>
+          <p>Total calls: {logs.length.toLocaleString()}</p>
+          <p>Total tokens: {stats.totalTokens.toLocaleString()}</p>
+          <p>Estimated cost: ${stats.totalCost.toFixed(4)}</p>
+          <p>Avg latency: {stats.avgLatency.toLocaleString()}ms</p>
         </div>
       </CardContent>
     </Card>

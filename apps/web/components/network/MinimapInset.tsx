@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { NetworkDataset } from '@/lib/network/seededDataset';
+import type { NetworkDataset } from '@/lib/network/types';
 
 interface Props {
   data: NetworkDataset;

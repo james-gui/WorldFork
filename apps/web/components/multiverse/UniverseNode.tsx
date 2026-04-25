@@ -17,7 +17,7 @@ import {
   STATUS_COLORS,
   triggerLabel,
   type MultiverseNodeData,
-} from '@/lib/mocks/multiverse';
+} from '@/lib/multiverse/types';
 
 export interface UniverseNodePayload {
   universe: MultiverseNodeData;

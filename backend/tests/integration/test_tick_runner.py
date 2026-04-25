@@ -15,7 +15,7 @@ Three test classes:
   short-circuits without side effects.
 
 * :class:`TestTickRunnerIdempotency` — invokes run_tick twice with the
-  same idempotency key; second invocation returns ``already_running``.
+  same idempotency key; completed ticks short-circuit as ``already_done``.
 
 * :class:`TestTickRunnerSpawnActiveBranch` — god agent returns
   ``spawn_active`` with a delta; verifies the branch_universe envelope
@@ -712,7 +712,7 @@ class TestTickRunnerIdempotency:
             limiter=rate_limiter,
             memory=None,
         )
-        assert result2["status"] == "already_running", result2
+        assert result2["status"] == "already_done", result2
 
 
 # ---------------------------------------------------------------------------

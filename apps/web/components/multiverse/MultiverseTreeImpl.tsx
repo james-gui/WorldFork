@@ -7,12 +7,10 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  useReactFlow,
   type Edge,
   type Node,
   type OnNodesChange,
   type OnEdgesChange,
-  type ReactFlowInstance,
   applyNodeChanges,
   applyEdgeChanges,
 } from '@xyflow/react';
@@ -23,7 +21,8 @@ import {
   STATUS_COLORS,
   type MultiverseNodeData,
   type MultiverseTreePayload,
-} from '@/lib/mocks/multiverse';
+} from '@/lib/multiverse/types';
+import { useFocusBranch } from '@/lib/api/multiverse';
 import { layoutLR, NODE_H, NODE_W } from './multiverseLayout';
 import { UniverseNode, type UniverseNodePayload } from './UniverseNode';
 
@@ -31,13 +30,7 @@ const nodeTypes = { universe: UniverseNode };
 
 interface MultiverseTreeImplProps {
   tree: MultiverseTreePayload;
-}
-
-interface FilterState {
-  statuses: Set<string>;
-  searchTerm: string;
-  depthRange: [number, number];
-  showInactiveCollapsed: boolean;
+  bbId?: string;
 }
 
 function buildAncestorSet(
@@ -79,10 +72,8 @@ function buildDescendantSet(
   return out;
 }
 
-/**
- * Inner content (must be inside ReactFlowProvider so we can call useReactFlow).
- */
-function MultiverseTreeContent({ tree }: MultiverseTreeImplProps) {
+/** Inner content rendered inside the ReactFlowProvider. */
+function MultiverseTreeContent({ tree, bbId }: MultiverseTreeImplProps) {
   const selectedUniverseId = useMultiverseUIStore((s) => s.selectedUniverseId);
   const setSelectedUniverseId = useMultiverseUIStore(
     (s) => s.setSelectedUniverseId,
@@ -94,6 +85,7 @@ function MultiverseTreeContent({ tree }: MultiverseTreeImplProps) {
   const toggleCompare = useMultiverseUIStore((s) => s.toggleCompare);
   const highlightLineage = useMultiverseUIStore((s) => s.highlightLineage);
   const setZoom = useMultiverseUIStore((s) => s.setZoom);
+  const focusBranch = useFocusBranch(bbId ?? tree.bbId);
 
   // Auto-collapse heavy subtrees on first sight of the tree.
   const seededRef = React.useRef<string | null>(null);
@@ -211,8 +203,15 @@ function MultiverseTreeContent({ tree }: MultiverseTreeImplProps) {
     [setSelectedUniverseId, toggleCompare],
   );
 
+  const onNodeDoubleClick = React.useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setSelectedUniverseId(node.id);
+      focusBranch.mutate(node.id);
+    },
+    [focusBranch, setSelectedUniverseId],
+  );
+
   // LOD: flip a CSS attribute on each node element when zoom < 0.5.
-  const rfRef = React.useRef<ReactFlowInstance | null>(null);
   const onMove = React.useCallback(
     (_e: unknown, viewport: { x: number; y: number; zoom: number }) => {
       setZoom(viewport.zoom);
@@ -238,9 +237,7 @@ function MultiverseTreeContent({ tree }: MultiverseTreeImplProps) {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={onNodeClick}
-      onInit={(inst) => {
-        rfRef.current = inst;
-      }}
+      onNodeDoubleClick={onNodeDoubleClick}
       onMove={onMove}
       onlyRenderVisibleElements
       proOptions={{ hideAttribution: true }}
@@ -271,11 +268,11 @@ function MultiverseTreeContent({ tree }: MultiverseTreeImplProps) {
   );
 }
 
-export default function MultiverseTreeImpl({ tree }: MultiverseTreeImplProps) {
+export default function MultiverseTreeImpl({ tree, bbId }: MultiverseTreeImplProps) {
   return (
     <ReactFlowProvider>
       <div className="size-full">
-        <MultiverseTreeContent tree={tree} />
+        <MultiverseTreeContent tree={tree} bbId={bbId} />
       </div>
     </ReactFlowProvider>
   );

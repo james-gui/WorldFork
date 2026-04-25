@@ -18,6 +18,7 @@ Call reset_degraded() to re-probe after a successful healthcheck.
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 from typing import Literal
 
 import structlog
@@ -51,6 +52,8 @@ class ZepMemoryProvider:
         request_timeout: float = 10.0,
     ) -> None:
         # Never log the api_key
+        if AsyncZep is None:
+            raise RuntimeError("zep-cloud is not installed; install the zep extra to enable Zep")
         self.client = AsyncZep(api_key=api_key, timeout=request_timeout)
         self.mode = mode
         self.local_fallback = local_fallback or LocalMemoryProvider()
@@ -221,7 +224,8 @@ class ZepMemoryProvider:
         # Zep cloud v3 schema: `role` is an enum (user|assistant|system|tool|function|norole)
         # while `name` carries the speaker label (cohort/hero id). Map our role_type → role
         # and stash the caller-provided `role` string into name.
-        msg = ZepMessage(
+        message_cls = ZepMessage or SimpleNamespace
+        msg = message_cls(
             role=role_type,  # role_type IS the enum value Zep expects
             name=role,       # speaker label (e.g. cohort_id, hero_id, "tick_summary")
             content=content,

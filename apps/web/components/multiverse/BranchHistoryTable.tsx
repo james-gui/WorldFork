@@ -27,7 +27,7 @@ import {
   triggerLabel,
   type MultiverseNodeData,
   type MultiverseTreePayload,
-} from '@/lib/mocks/multiverse';
+} from '@/lib/multiverse/types';
 import { useMultiverseUIStore } from '@/lib/state/multiverseUiStore';
 
 interface BranchHistoryTableProps {

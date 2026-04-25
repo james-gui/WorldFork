@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle } from 'lucide-react';
+import { useErrorLogs, useLogs } from '@/lib/api/logs';
 
 interface Alert {
   id: string;
@@ -13,44 +14,58 @@ interface Alert {
   severity: 'warning' | 'error';
 }
 
-const STUB_ALERTS: Alert[] = [
-  {
-    id: '1',
-    provider: 'OpenRouter',
-    message: 'RPM limit hit on cohort_decision (429)',
-    time: '3 min ago',
-    severity: 'warning',
-  },
-  {
-    id: '2',
-    provider: 'OpenRouter',
-    message: 'TPM quota at 95% — auto-fallback triggered',
-    time: '12 min ago',
-    severity: 'error',
-  },
-  {
-    id: '3',
-    provider: 'OpenRouter',
-    message: 'God-review job queued behind rate limit',
-    time: '28 min ago',
-    severity: 'warning',
-  },
-];
+function timeAgo(value?: string | null) {
+  if (!value) return 'time unavailable';
+  const createdAt = new Date(value).getTime();
+  if (Number.isNaN(createdAt)) return 'time unavailable';
+  const minutes = Math.max(0, Math.round((Date.now() - createdAt) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
 
 export function AlertsCard() {
+  const { data: errors = [] } = useErrorLogs({ limit: 20 });
+  const { data: logs = [] } = useLogs({ limit: 200 });
+
+  const alerts = React.useMemo<Alert[]>(() => {
+    const llmFailures = logs
+      .filter((log) => log.status !== 'success' || log.error)
+      .slice(0, 5)
+      .map((log) => ({
+        id: log.call_id,
+        provider: log.provider,
+        message: log.error || `${log.job_type} returned ${log.status}`,
+        time: timeAgo(log.created_at),
+        severity: log.error ? 'error' as const : 'warning' as const,
+      }));
+
+    const jobErrors = errors.slice(0, 5).map((error) => ({
+      id: `${error.source}:${error.id}`,
+      provider: error.provider || error.job_type || error.source,
+      message: error.error || `${error.source} ${error.status}`,
+      time: timeAgo(error.created_at),
+      severity: 'error' as const,
+    }));
+
+    return [...jobErrors, ...llmFailures].slice(0, 5);
+  }, [errors, logs]);
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <CardTitle className="text-sm">Alerts</CardTitle>
           <Badge variant="destructive" className="text-xs">
-            {STUB_ALERTS.length}
+            {alerts.length}
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">Recent rate-limit events</p>
       </CardHeader>
       <CardContent className="space-y-2">
-        {STUB_ALERTS.map((alert) => (
+        {alerts.map((alert) => (
           <div
             key={alert.id}
             className="flex items-start gap-2 rounded-md border border-border p-2"
@@ -68,7 +83,7 @@ export function AlertsCard() {
           </div>
         ))}
 
-        {STUB_ALERTS.length === 0 && (
+        {alerts.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-4">No recent alerts.</p>
         )}
       </CardContent>

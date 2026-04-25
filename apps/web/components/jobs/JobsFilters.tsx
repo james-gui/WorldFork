@@ -51,7 +51,7 @@ export function JobsFilters({ filters, onChange, onRefresh }: JobsFiltersProps) 
           <SelectItem value="p1">P1</SelectItem>
           <SelectItem value="p2">P2</SelectItem>
           <SelectItem value="p3">P3</SelectItem>
-          <SelectItem value="dead">Dead</SelectItem>
+          <SelectItem value="dead_letter">Dead</SelectItem>
         </SelectContent>
       </Select>
 
@@ -77,9 +77,14 @@ export function JobsFilters({ filters, onChange, onRefresh }: JobsFiltersProps) 
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All types</SelectItem>
+          <SelectItem value="initialize_big_bang">Initialize</SelectItem>
           <SelectItem value="simulate_universe_tick">Sim tick</SelectItem>
           <SelectItem value="agent_deliberation_batch">Agent batch</SelectItem>
+          <SelectItem value="god_agent_review">God review</SelectItem>
           <SelectItem value="branch_universe">Branch</SelectItem>
+          <SelectItem value="force_deviation">Force deviation</SelectItem>
+          <SelectItem value="aggregate_run_results">Results</SelectItem>
+          <SelectItem value="apply_tick_results">Apply tick</SelectItem>
           <SelectItem value="sync_zep_memory">Zep sync</SelectItem>
           <SelectItem value="export_run">Export</SelectItem>
           <SelectItem value="social_propagation">Social prop</SelectItem>

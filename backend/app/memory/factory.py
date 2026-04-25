@@ -30,6 +30,9 @@ def _build_provider() -> MemoryProvider:
     """Construct the appropriate provider based on current settings."""
     from backend.app.core.config import settings
 
+    if not settings.zep_enabled:
+        return LocalMemoryProvider()
+
     api_key = settings.zep_api_key or os.environ.get("ZEP_API_KEY", "")
 
     if not api_key:

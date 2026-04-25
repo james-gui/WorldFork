@@ -24,7 +24,7 @@ class ProviderSettingModel(Base, TimestampMixin):
     fallback_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     json_mode_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     tool_calling_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     extra_headers: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # Full payload for round-trip fidelity
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
@@ -94,8 +94,8 @@ class ZepSettingModel(Base, TimestampMixin):
     __tablename__ = "settings_zep"
 
     setting_id: Mapped[str] = mapped_column(String(64), primary_key=True, default="default")
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="cohort_memory")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
     api_key_env: Mapped[str] = mapped_column(String(128), nullable=False, default="ZEP_API_KEY")
     cache_ttl_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
     degraded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

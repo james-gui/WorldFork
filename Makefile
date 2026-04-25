@@ -1,4 +1,4 @@
-.PHONY: up down build logs migrate revision seed test test-unit test-integration test-e2e test-all lint web web-build clean
+.PHONY: up down build logs migrate revision seed test test-unit test-integration test-e2e test-all lint web web-build clean clean-data
 
 up:
 	docker compose up -d
@@ -50,4 +50,9 @@ web-build:
 	cd apps/web && pnpm build
 
 clean:
-	docker compose down -v && rm -rf runs/* .pytest_cache .mypy_cache .ruff_cache
+	docker compose down
+	rm -rf .pytest_cache .mypy_cache .ruff_cache
+
+clean-data:
+	docker compose down -v
+	rm -rf runs/*

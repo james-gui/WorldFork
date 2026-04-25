@@ -1,6 +1,6 @@
 # WorldFork Full Product Requirements Document
 
-**Version:** 4.0 Full Implementation PRD  
+**Version:** 4.1 Full Implementation PRD
 **Product:** WorldFork  
 **Primary backend language:** Python  
 **Frontend:** React/TypeScript  
@@ -30,6 +30,10 @@ The full system includes:
 - source-of-truth taxonomies
 - sociology update layer
 - recursive branch engine
+- per-universe quiet-window completion
+- run-results aggregation agent and results dashboard
+- full tick-level trace observability
+- user-forced deviation from historical ticks
 - optional Zep memory integration
 - optional OASIS/social-platform adapter
 - full run ledger for reproducibility
@@ -37,7 +41,7 @@ The full system includes:
 
 The signature product experience:
 
-> Create a Big Bang → simulate society → watch timelines recursively fork → inspect every state, event, post, branch, and decision.
+> Create a Big Bang → simulate society → watch timelines recursively fork → force counterfactual deviations when needed → inspect every state, event, post, branch, prompt, trace, and result.
 
 ---
 
@@ -65,6 +69,10 @@ WorldFork must:
 18. Provide a polished UI for creation, live simulation, recursive branching, review, logs, settings, integrations, and memory.
 19. Persist all prompts, responses, tool calls, state snapshots, source-of-truth files, and configs for reproducibility.
 20. Allow safe replay and audit of completed sessions.
+21. Allow each universe to end independently when a God-agent confirms a quiet terminal window.
+22. Aggregate completed multiverse outcomes into a run-level results dashboard.
+23. Expose full trace observability for cohort, hero, and God-agent thought packets at each tick.
+24. Let users force a deviation from any valid historical tick using either natural-language God-agent prompting or a structured branch delta.
 
 ---
 
@@ -110,6 +118,12 @@ WorldFork may model escalation categories and unrest risk at a high level, but i
 
 8. **Every decision is replayable.**  
    Prompts, responses, parsed decisions, tool calls, state snapshots, and God-agent decisions are persisted.
+
+9. **Completion is per-universe.**
+   A quiet branch can complete without stopping other active universes. A run completes only when every universe is terminal.
+
+10. **Operators can create auditable counterfactuals.**
+   User-forced deviations are first-class branch events with validated deltas, hard-cap enforcement, and audit artifacts.
 
 ---
 
@@ -166,6 +180,12 @@ A social-media platform, news outlet, institution channel, or communication sour
 
 ### 6.11 God-Agent
 Universe-level reviewer that decides whether a universe should continue, freeze, kill, or branch.
+
+### 6.12 Results Agent
+Run-level aggregator that executes after all universes in a Big Bang are terminal. It classifies outcomes, summarizes branch clusters, highlights decisive timeline moments, and writes the canonical run-results artifact.
+
+### 6.13 Forced Deviation
+An operator-requested counterfactual branch from a selected historical tick. The user may provide a natural-language instruction for the God-agent to convert into a valid `BranchDelta`, or may provide an advanced structured `BranchDelta` directly.
 
 ---
 
@@ -236,6 +256,10 @@ Owns:
 - branch candidate creation
 - recursive branch creation
 - freeze/kill/merge branch policies
+- quiet-window universe completion
+- run-terminal detection
+- results aggregation scheduling
+- user-forced deviation branch commits
 - branch-aware rate scheduling
 - queue scheduling
 
@@ -252,6 +276,9 @@ Owns:
 - recursive multiverse explorer
 - universe timeline detail
 - review mode
+- run-results dashboard
+- full tick trace inspector
+- force-deviation dialogs
 - run history
 - session detail
 - settings/configuration
@@ -681,6 +708,37 @@ class BranchNode(BaseModel):
     descendant_count: int
 ```
 
+### 9.10 RunResult
+
+```python
+class RunResult(BaseModel):
+    run_id: str
+    status: Literal["pending", "running", "succeeded", "failed"]
+    generated_at: datetime | None
+    provider: str | None
+    model_used: str | None
+    summary: str | None
+    classifications: dict
+    branch_clusters: list[dict]
+    universe_outcomes: list[dict]
+    timeline_highlights: list[dict]
+    metrics: dict
+    artifact_path: str | None
+    error: str | None
+    job_id: str | None
+    created_at: datetime
+    updated_at: datetime
+```
+
+Required classification axes:
+
+- conflict trajectory
+- institutional legitimacy
+- collective action
+- harm outcome
+- dominant driver
+- scenario-specific labels
+
 ---
 
 ## 10. Prompting and Tool Use
@@ -815,10 +873,16 @@ for universe in active_universes:
         update_graphs(universe)
         write_memory_episodes(universe)
         compute_metrics(universe)
+        compute_quiet_window_evidence(universe, window_ticks=5)
         run_god_agent_review(universe)
-        apply_branch_freeze_kill_continue_decision(universe)
+        apply_branch_freeze_kill_complete_continue_decision(universe)
         persist_tick_snapshot(universe)
+        if all_universes_terminal(run):
+            mark_run_completed(run)
+            enqueue_aggregate_run_results(run)
 ```
+
+A universe reaches `completed` when either `max_ticks` is reached or the God-agent returns `complete_universe` with quiet-window evidence. Quiet-window evidence is computed over the last five ticks and must show no material newly resolved events, no material new events, social posting at or below one post per tick, low reach, and low mobilization risk. Completion is scoped to the universe; sibling universes continue unless they are independently terminal.
 
 ### 11.2 Active Agent Selection
 
@@ -1019,12 +1083,12 @@ Big Bang -> A, B, C, D only
 
 ### 13.4 Branch States
 
-- candidate
-- active
-- frozen
-- killed
-- completed
-- merged
+- `candidate`: proposed and persisted, but not currently advancing automatically.
+- `active`: eligible for tick simulation.
+- `frozen`: intentionally paused and preserved for inspection or later replay.
+- `killed`: terminal because the user or God-agent ended it as non-viable.
+- `completed`: terminal because `max_ticks` was reached or quiet-window completion was confirmed.
+- `merged`: terminal because its outcome was superseded by or folded into another lineage.
 
 ### 13.5 Branch Explosion Controls
 
@@ -1061,10 +1125,39 @@ God-agent output:
 - kill universe
 - spawn candidate branch
 - spawn active branch
+- complete universe
 - mark key event
 - write tick summary
 
 God-agent must not rewrite parent history.
+
+`complete_universe` is only valid when the engine-provided quiet-window evidence supports it. The God-agent may recommend completion, but the engine must reject premature completion if recent events, posts, reach, or mobilization risk remain materially active.
+
+### 13.7 User-Forced Deviation
+
+Users can force a branch from a selected historical tick in Review Mode or the Multiverse inspector.
+
+Request fields:
+
+- `tick`
+- `mode`: `god_prompt` or `structured_delta`
+- `prompt`
+- `delta`
+- `reason`
+- `auto_start`
+
+In `god_prompt` mode, the God-agent converts the user prompt into a valid `BranchDelta`. In `structured_delta` mode, the engine validates the provided delta directly. Forced deviations bypass cooldown and minimum-divergence checks because the operator explicitly wants the counterfactual, but they must still respect hard caps for maximum depth, total branches, and active universes.
+
+Each forced deviation must write an audit artifact containing the user request, generated or supplied delta, policy decision, child universe id, enqueue state, and any validation or cap failure.
+
+### 13.8 Per-Universe Quiet Completion
+
+Each universe is evaluated independently after every tick. A universe can be marked `completed` only when:
+
+1. the universe has reached `max_ticks`, or
+2. the last five ticks are quiet and the God-agent returns `complete_universe`.
+
+Quiet means no resolved material events, no newly scheduled material events, social posts at or below one per tick, low aggregate reach, and low mobilization risk. A run is marked `completed` only after every universe is terminal: `completed`, `frozen`, or `killed`.
 
 ---
 
@@ -1173,6 +1266,8 @@ backend/
 - `sociology_update`
 - `god_agent_review`
 - `branch_universe`
+- `force_deviation`
+- `aggregate_run_results`
 - `sync_zep_memory`
 - `build_review_index`
 - `export_run`
@@ -1182,8 +1277,8 @@ backend/
 | Queue | Jobs |
 |---|---|
 | P0 Critical | universe ticks, branch commits |
-| P1 High | cohort/hero deliberation, social propagation |
-| P2 Normal | Zep sync, summaries, analytics |
+| P1 High | cohort/hero deliberation, social propagation, forced deviations |
+| P2 Normal | Zep sync, summaries, analytics, run-results aggregation |
 | P3 Low | exports, replay rebuilds |
 | Dead Letter | repeated failures |
 
@@ -1282,6 +1377,8 @@ Example:
 }
 ```
 
+`god_agent_review`, `force_deviation`, and `aggregate_run_results` default to the God-agent tier. Regular cohort, hero, and sociology jobs default to the standard simulation tier. The routing table must allow operators to assign different OpenRouter models to these tiers and test provider health before saving changes.
+
 ### 16.5 Rate Limit Config
 
 ```json
@@ -1362,7 +1459,9 @@ Zep’s docs describe it as a context engineering platform combining agent memor
 3. Run-Scoped Threads: each universe/run maps to a Zep thread.
 4. Hybrid: cohort memory plus run-scoped thread context.
 
-Default: Cohort Memory.
+Default when enabled: Cohort Memory.
+
+Zep must be disabled unless `ZEP_ENABLED=true` and a `ZEP_API_KEY` are explicitly configured. With Zep disabled, memory retrieval, trace panels, and review views must use local run-ledger summaries and must not call Zep APIs. Zep UI and API endpoints should return a disabled/local-memory status rather than surfacing provider errors.
 
 ### 17.5 Sync Triggers
 
@@ -1457,6 +1556,8 @@ runs/
             universe_state_before.json
             visible_packets/
             llm_calls/
+              raw_prompt_packets/
+              raw_model_outputs/
             parsed_decisions.json
             tool_calls.json
             events/
@@ -1464,6 +1565,7 @@ runs/
             sociology/
             memory/
             god/
+            trace.json
             universe_state_after.json
         logs/
           event_log.jsonl
@@ -1474,10 +1576,19 @@ runs/
     review/
       indexes/
       derived_summaries/
+    results/
+      run_results_<timestamp>.json
+      aggregation_prompt.md
+      aggregation_response_raw.json
+      aggregation_response_parsed.json
+    forced_deviations/
+      <deviation_id>_audit.json
     exports/
 ```
 
 Historical artifacts are immutable. Only display metadata such as name, description, tags, and favorite/archive status may be edited.
+
+Trace artifacts must support actor-level replay for cohorts, heroes, and the God-agent: prompt packet, visible feed, visible events, retrieved memory, raw response, parsed JSON, tool calls, rationale, self-ratings, state before, state after, and state delta. Full raw trace mode must defensively redact API-key-like strings even for authorized local users.
 
 ---
 
@@ -1492,6 +1603,8 @@ Historical artifacts are immutable. Only display metadata such as name, descript
 - `POST /api/runs/{run_id}/archive`
 - `POST /api/runs/{run_id}/duplicate`
 - `POST /api/runs/{run_id}/export`
+- `GET /api/runs/{run_id}/results`
+- `POST /api/runs/{run_id}/results/regenerate`
 
 ### 20.2 Universes
 
@@ -1501,9 +1614,14 @@ Historical artifacts are immutable. Only display metadata such as name, descript
 - `POST /api/universes/{universe_id}/step`
 - `POST /api/universes/{universe_id}/branch-preview`
 - `POST /api/universes/{universe_id}/branch`
+- `POST /api/universes/{universe_id}/kill`
+- `POST /api/universes/{universe_id}/replay`
+- `POST /api/universes/{universe_id}/force-deviation`
 - `GET /api/universes/{universe_id}/ticks/{tick}`
+- `GET /api/universes/{universe_id}/ticks/{tick}/trace?include_raw=true`
 - `GET /api/universes/{universe_id}/lineage`
 - `GET /api/universes/{universe_id}/descendants`
+- `GET /api/universes/{universe_id}/network`
 
 ### 20.3 Recursive Multiverse
 
@@ -1513,6 +1631,22 @@ Historical artifacts are immutable. Only display metadata such as name, descript
 - `POST /api/multiverse/{big_bang_id}/prune`
 - `POST /api/multiverse/{big_bang_id}/focus-branch`
 - `POST /api/multiverse/{big_bang_id}/compare`
+- `POST /api/multiverse/{big_bang_id}/simulate-next-tick`
+
+Forced deviation request:
+
+```json
+{
+  "tick": 8,
+  "mode": "god_prompt",
+  "prompt": "Force an early verified whistleblower leak before the vote.",
+  "delta": null,
+  "reason": "Operator counterfactual test",
+  "auto_start": true
+}
+```
+
+Trace response must include `actors`, `state_before`, `state_after`, `god_decision`, `redactions_applied`, and `missing_artifacts`.
 
 ### 20.4 Settings
 
@@ -1612,6 +1746,9 @@ Required elements:
 - compare branches button
 - simulate next tick button
 - autoplay toggle
+- freeze, kill, and replay controls
+- force-deviation dialog
+- results link when run-level results exist or can be generated
 
 ### 21.3 Interaction Rules
 
@@ -1630,6 +1767,9 @@ Click:
 - event opens detail panel
 - compare opens compare mode
 - simulate next tick queues job
+- force deviation opens a validated branch dialog
+- freeze/kill/replay update universe status and refresh the tree
+- results opens the run-level outcome dashboard
 
 Double-click:
 
@@ -1665,8 +1805,12 @@ Recursive branch tree/DAG view.
 ### 22.6 Universe Timeline Detail
 Timeline for one universe with events, cohort shifts, social spikes, God actions, logs.
 
+Universe detail must include a trace panel for each available tick so reviewers can inspect cohort, hero, and God-agent prompt packets and state transitions without leaving the universe context.
+
 ### 22.7 Review Mode
 Tick-by-tick replay and explainability.
+
+Required review controls include play/pause, step forward/back, jump start/end, speed control, tick slider, prompt summary, tool calls, parsed decisions, emotion trends, actor trace selector, raw/parsed/tool/state trace tabs, and force-deviation from the selected historical tick.
 
 ### 22.8 Run History
 Browse, filter, rename, favorite, archive, duplicate, open runs.
@@ -1694,6 +1838,11 @@ Zep settings, mappings, graph preview, latency, cache warming.
 
 ### 22.16 API Logs & Webhooks
 Provider calls, request traces, errors, webhook replay.
+
+### 22.17 Results Dashboard
+Run-level summary cards, classification table, branch cluster view, outcome timeline, per-universe outcome cards, aggregation job status, regenerate control, and links back to dashboard, review, network, and multiverse views.
+
+The results dashboard appears when a results artifact exists. If the run is terminal but no artifact exists, the page must allow the user to queue or regenerate `aggregate_run_results`.
 
 ---
 
@@ -1728,8 +1877,16 @@ The product must expose:
 - branch budget
 - active universes
 - candidate branches
+- completed/frozen/killed terminal counts
+- quiet-window completion evidence
+- results aggregation status
+- forced-deviation audit status
+- actor trace availability per tick
+- LLM request rows and model/provider used per call
 - Zep ingestion status
 - webhook delivery status
+
+Trace observability must let a reviewer reconstruct what each active cohort, hero, and God-agent saw, what model was called, what raw output returned, what JSON was parsed, what tool calls were accepted or rejected, and how actor/universe state changed. Missing artifacts should be shown as explicit warnings, not blank UI.
 
 ---
 
@@ -1743,6 +1900,7 @@ The product must expose:
 - Provider keys scoped to workspace.
 - Uploaded files sanitized.
 - Run folders protected by access control.
+- Full trace views redact API-key-like strings before returning or rendering raw payloads.
 
 ---
 
@@ -1759,6 +1917,9 @@ The product must expose:
 | failed job | retry policy then dead-letter |
 | invalid split | reject and log validation error |
 | invalid branch delta | reject or create candidate requiring review |
+| invalid forced deviation | reject, write audit event, leave parent unchanged |
+| premature complete_universe decision | ignore completion, continue universe, log quiet-window mismatch |
+| results aggregation timeout | persist failed/pending status with error and allow regenerate |
 
 ---
 
@@ -1776,6 +1937,12 @@ The product must expose:
 - run ledger writer
 - prompt packet construction
 - event queue scheduling
+- quiet-window completion computation
+- God-agent `complete_universe` validation
+- run-terminal detection and results job enqueue
+- results aggregation classification output
+- trace redaction and missing-artifact handling
+- forced-deviation validation for both modes
 
 ### 27.2 Integration Tests
 
@@ -1787,6 +1954,10 @@ The product must expose:
 - Zep failure fallback
 - provider rate-limit fallback
 - queue retry/dead-letter flow
+- results aggregation happy path and regenerate retry
+- trace endpoint from DB and ledger artifacts
+- forced deviation branch creation and audit artifact
+- freeze/kill/replay terminal-state transitions
 
 ### 27.3 E2E Tests
 
@@ -1796,6 +1967,10 @@ The product must expose:
 4. export run → reopen session detail
 5. enable Zep → sync → simulate outage → continue run
 6. kill/freeze branch → verify recursive UI status updates
+7. complete all universes → aggregate results → inspect results dashboard
+8. force deviation from prior tick → verify child universe and audit artifact
+9. inspect cohort/hero/God trace panels in review and universe detail
+10. click through PRD-critical and non-critical app shell controls with Browser Use first; if pane acquisition fails, use Playwright and record the fallback
 
 ---
 
@@ -1819,6 +1994,11 @@ The MVP is complete when:
 14. Background job monitor works.
 15. Zep integration page exists and can be disabled.
 16. Export zip works.
+17. God-agent can complete a quiet universe after five inactive ticks.
+18. Completed/frozen/killed universes trigger run completion and results aggregation.
+19. Results dashboard shows summary, classifications, branch clusters, outcomes, timeline highlights, metrics, and regenerate state.
+20. Review and universe detail expose full actor traces with raw payloads redacted.
+21. Review and multiverse views can force a historical-tick deviation and display the resulting child universe.
 
 ---
 
@@ -1860,6 +2040,15 @@ Because reproducibility and auditability require a deterministic local record of
 ### Q12. Why does the recursive multiverse need a new UI?
 Because a flat fanout cannot represent the real product logic. Each child timeline can branch again, so the UI must show nested lineage, depth, and descendants.
 
+### Q13. When does a universe end?
+A universe ends when it reaches `max_ticks` or when the last five ticks are quiet and the God-agent returns `complete_universe`. Other universes in the same run continue until they are independently terminal.
+
+### Q14. Can users force a specific counterfactual?
+Yes. Review Mode and the Multiverse inspector support forced deviation from a historical tick using either a natural-language God-agent prompt or a structured `BranchDelta`.
+
+### Q15. What summarizes the whole multiverse?
+The results agent runs after all universes are terminal and writes a run-results artifact for the results dashboard.
+
 ---
 
 ## 30. Implementation Build Order
@@ -1880,19 +2069,22 @@ Because a flat fanout cannot represent the real product logic. Each child timeli
 14. dashboard and run history
 15. recursive multiverse explorer
 16. review mode
-17. settings/integrations/logs
-18. optional Zep adapter
-19. export/replay support
+17. trace observability panels
+18. results aggregation and results dashboard
+19. forced-deviation workflow
+20. settings/integrations/logs
+21. optional Zep adapter
+22. export/replay support
 
 ---
 
 ## 31. Final Product Definition
 
-WorldFork is a Python-backed, asynchronous, recursively branching social simulation system. It represents large populations with structured cohort agents, models high-impact individuals as heroes, uses prompt-driven tool workflows, updates social dynamics through configurable sociology rules, branches timelines recursively through God-agent review, respects provider/rate limits, stores every artifact in a reproducible run ledger, and exposes the full system through polished UI views.
+WorldFork is a Python-backed, asynchronous, recursively branching social simulation system. It represents large populations with structured cohort agents, models high-impact individuals as heroes, uses prompt-driven tool workflows, updates social dynamics through configurable sociology rules, branches timelines recursively through God-agent review and user-forced deviations, completes quiet universes independently, aggregates terminal multiverses into results dashboards, respects provider/rate limits, stores every artifact in a reproducible run ledger, and exposes the full system through polished UI views with full trace observability.
 
 Final product experience:
 
-> Big Bang → society evolves → timelines fork recursively → every future is inspectable.
+> Big Bang → society evolves → timelines fork recursively → quiet futures end → results aggregate → every future is inspectable.
 
 ---
 

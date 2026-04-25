@@ -10,7 +10,7 @@ import {
   Gauge,
   TrendingUp,
 } from 'lucide-react';
-import type { MultiverseTreePayload } from '@/lib/mocks/multiverse';
+import type { MultiverseTreePayload } from '@/lib/multiverse/types';
 
 interface KpiStripProps {
   kpis: MultiverseTreePayload['kpis'];

@@ -22,39 +22,45 @@ import { wsClient } from './client';
 
 type Channel = 'runs' | 'universes' | 'jobs';
 
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000';
+const WS_BASE = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8003';
 
 /**
  * Map backend event type → TanStack Query invalidations.
  */
 function applyTopicEffect(
   qc: ReturnType<typeof useQueryClient>,
-  msg: Record<string, unknown>
+  msg: Record<string, unknown>,
+  scope?: { channel: Channel; id?: string },
 ) {
   // Backend envelope shape: { type, ts, payload }
   const eventType = (msg.type ?? '') as string;
   const payload = (msg.payload ?? msg) as Record<string, unknown>;
+  const scopedRunId = scope?.channel === 'runs' ? scope.id : undefined;
 
   switch (eventType) {
     case 'tick.completed':
     case 'tick.started': {
       const uid = payload.universe_id as string | undefined;
-      const runId = payload.run_id as string | undefined;
+      const runId = (payload.run_id as string | undefined) ?? scopedRunId;
       if (uid) {
         qc.invalidateQueries({ queryKey: ['ticks', uid] });
         qc.invalidateQueries({ queryKey: ['universe', uid] });
       }
       if (runId) {
         qc.invalidateQueries({ queryKey: ['run', runId] });
+        qc.invalidateQueries({ queryKey: ['runs'] });
       }
       break;
     }
 
     case 'metrics.updated': {
       const uid = payload.universe_id as string | undefined;
-      const runId = payload.run_id as string | undefined;
+      const runId = (payload.run_id as string | undefined) ?? scopedRunId;
       if (uid) qc.invalidateQueries({ queryKey: ['universe', uid] });
-      if (runId) qc.invalidateQueries({ queryKey: ['run', runId] });
+      if (runId) {
+        qc.invalidateQueries({ queryKey: ['run', runId] });
+        qc.invalidateQueries({ queryKey: ['runs'] });
+      }
       break;
     }
 
@@ -65,9 +71,13 @@ function applyTopicEffect(
         (payload.universe_id as string | undefined) ??
         (payload.parent_universe_id as string | undefined) ??
         (payload.child_universe_id as string | undefined);
-      const runId = payload.run_id as string | undefined;
+      const runId = (payload.run_id as string | undefined) ?? scopedRunId;
       if (uid) qc.invalidateQueries({ queryKey: ['lineage', uid] });
-      if (runId) qc.invalidateQueries({ queryKey: ['multiverseTree', runId] });
+      if (runId) {
+        qc.invalidateQueries({ queryKey: ['run', runId] });
+        qc.invalidateQueries({ queryKey: ['runs'] });
+        qc.invalidateQueries({ queryKey: ['multiverseTree', runId] });
+      }
       qc.invalidateQueries({ queryKey: ['multiverseTree'] });
       break;
     }
@@ -91,12 +101,15 @@ function applyTopicEffect(
 
     case 'god.decision': {
       const uid = payload.universe_id as string | undefined;
-      const runId = payload.run_id as string | undefined;
+      const runId = (payload.run_id as string | undefined) ?? scopedRunId;
       if (uid) {
         qc.invalidateQueries({ queryKey: ['universe', uid] });
         qc.invalidateQueries({ queryKey: ['ticks', uid] });
       }
-      if (runId) qc.invalidateQueries({ queryKey: ['run', runId] });
+      if (runId) {
+        qc.invalidateQueries({ queryKey: ['run', runId] });
+        qc.invalidateQueries({ queryKey: ['runs'] });
+      }
       break;
     }
 
@@ -131,7 +144,8 @@ export function useWebSocketSubscription(channel: Channel, id?: string) {
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (!wsClient) return;
+    const client = wsClient;
+    if (!client) return;
 
     let url: string;
     if (channel === 'jobs') {
@@ -144,14 +158,15 @@ export function useWebSocketSubscription(channel: Channel, id?: string) {
       return;
     }
 
-    wsClient.connect(url);
+    const connectionUrl = client.connect(url, 'worldfork-dev');
 
-    const unsubscribe = wsClient.subscribe('*', (msg: unknown) => {
-      applyTopicEffect(qc, msg as Record<string, unknown>);
+    const unsubscribe = client.subscribe('*', (msg: unknown) => {
+      applyTopicEffect(qc, msg as Record<string, unknown>, { channel, id });
     });
 
     return () => {
       unsubscribe();
+      client.disconnect(connectionUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel, id]);

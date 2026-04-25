@@ -31,6 +31,8 @@ interface ProviderCardProps {
   defaultModel?: string;
   baseUrl?: string;
   models?: string[];
+  onTest?: () => Promise<void>;
+  onChange?: (value: { defaultModel: string; baseUrl: string }) => void;
 }
 
 export function ProviderCard({
@@ -40,18 +42,37 @@ export function ProviderCard({
   defaultModel,
   baseUrl,
   models = [],
+  onTest,
+  onChange,
 }: ProviderCardProps) {
   const [testing, setTesting] = React.useState(false);
   const [localModel, setLocalModel] = React.useState(defaultModel ?? '');
   const [localUrl, setLocalUrl] = React.useState(baseUrl ?? '');
 
+  React.useEffect(() => {
+    setLocalModel(defaultModel ?? '');
+    setLocalUrl(baseUrl ?? '');
+  }, [defaultModel, baseUrl]);
+
+  const updateModel = (value: string) => {
+    setLocalModel(value);
+    onChange?.({ defaultModel: value, baseUrl: localUrl });
+  };
+
+  const updateBaseUrl = (value: string) => {
+    setLocalUrl(value);
+    onChange?.({ defaultModel: localModel, baseUrl: value });
+  };
+
   const testConnection = async () => {
     setTesting(true);
     try {
-      await new Promise((r) => setTimeout(r, 600));
+      if (onTest) {
+        await onTest();
+      }
       toast.success(`${name}: connection test passed.`);
-    } catch {
-      toast.error(`${name}: connection test failed.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `${name}: connection test failed.`);
     } finally {
       setTesting(false);
     }
@@ -91,7 +112,7 @@ export function ProviderCard({
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Default Model</Label>
           {models.length > 0 ? (
-            <Select value={localModel} onValueChange={setLocalModel}>
+            <Select value={localModel} onValueChange={updateModel}>
               <SelectTrigger className="h-7 text-xs">
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
@@ -106,7 +127,7 @@ export function ProviderCard({
           ) : (
             <Input
               value={localModel}
-              onChange={(e) => setLocalModel(e.target.value)}
+              onChange={(e) => updateModel(e.target.value)}
               placeholder="model name"
               className="h-7 text-xs font-mono"
             />
@@ -117,7 +138,7 @@ export function ProviderCard({
           <Label className="text-xs text-muted-foreground">Base URL</Label>
           <Input
             value={localUrl}
-            onChange={(e) => setLocalUrl(e.target.value)}
+            onChange={(e) => updateBaseUrl(e.target.value)}
             placeholder="https://..."
             className="h-7 text-xs font-mono"
           />

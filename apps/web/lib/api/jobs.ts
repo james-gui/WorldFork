@@ -23,6 +23,7 @@ export function useJobs(opts?: {
   run_id?: string;
   limit?: number;
   offset?: number;
+  refetchInterval?: number | false;
 }) {
   const params = new URLSearchParams();
   if (opts?.queue) params.set('queue', opts.queue);
@@ -36,15 +37,15 @@ export function useJobs(opts?: {
   return useQuery<JobsListResponse>({
     queryKey: ['jobs', opts],
     queryFn: () => apiFetch<JobsListResponse>(`/api/jobs${qs ? `?${qs}` : ''}`),
-    refetchInterval: 10_000,
+    refetchInterval: opts?.refetchInterval ?? 10_000,
   });
 }
 
-export function useQueues() {
+export function useQueues(opts?: { refetchInterval?: number | false }) {
   return useQuery<QueuesResponse | null>({
     queryKey: ['queues'],
     queryFn: () => apiFetch<QueuesResponse>('/api/jobs/queues'),
-    refetchInterval: 10_000,
+    refetchInterval: opts?.refetchInterval ?? 10_000,
   });
 }
 

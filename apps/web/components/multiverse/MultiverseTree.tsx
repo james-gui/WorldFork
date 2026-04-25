@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { MultiverseTreePayload } from '@/lib/mocks/multiverse';
+import type { MultiverseTreePayload } from '@/lib/multiverse/types';
 
 // React Flow + dagre are browser-only — load via dynamic import w/ ssr: false.
 const MultiverseTreeImpl = dynamic(() => import('./MultiverseTreeImpl'), {
@@ -16,8 +16,9 @@ const MultiverseTreeImpl = dynamic(() => import('./MultiverseTreeImpl'), {
 
 export interface MultiverseTreeProps {
   tree: MultiverseTreePayload;
+  bbId?: string;
 }
 
-export function MultiverseTree({ tree }: MultiverseTreeProps) {
-  return <MultiverseTreeImpl tree={tree} />;
+export function MultiverseTree({ tree, bbId }: MultiverseTreeProps) {
+  return <MultiverseTreeImpl tree={tree} bbId={bbId} />;
 }

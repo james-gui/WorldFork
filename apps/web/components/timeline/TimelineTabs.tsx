@@ -165,20 +165,11 @@ export function TimelineTabs({ events, cohorts, posts, logs }: TimelineTabsProps
       {/* Memory */}
       <TabsContent value="memory" className="mt-2">
         <div className="rounded-md border p-3 text-xs text-muted-foreground max-h-56 overflow-y-auto">
-          <p className="font-medium text-foreground mb-2">Zep Memory Snapshot</p>
-          <p>Context retrieved at current tick. Memory provider: Zep Cloud.</p>
-          <pre className="mt-2 bg-muted rounded p-2 whitespace-pre-wrap break-all">
-            {JSON.stringify(
-              {
-                session_id: 'wf:universe:mock',
-                context:
-                  'Cohort A has shifted toward higher distrust following the tech regulation event. Hero agent H1 expressed solidarity. The media coverage from TechWatch amplified the narrative by 3x.',
-                token_count: 128,
-              },
-              null,
-              2
-            )}
-          </pre>
+          <p className="font-medium text-foreground mb-2">Local Ledger Memory</p>
+          <p>
+            Zep is disabled for this deployment. Tick summaries and review context are read from
+            the canonical run ledger.
+          </p>
         </div>
       </TabsContent>
     </Tabs>

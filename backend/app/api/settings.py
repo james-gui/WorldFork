@@ -223,6 +223,14 @@ async def patch_providers(
             row.extra_headers = dict(p.extra_headers)
             row.payload = dict(p.payload)
     await session.commit()
+    try:
+        from backend.app.core.config import settings as runtime_settings
+        from backend.app.providers import clear_registry, ensure_providers_in_loop
+
+        clear_registry()
+        await ensure_providers_in_loop(runtime_settings)
+    except Exception:
+        pass
     result2 = await session.execute(select(ProviderSettingModel))
     rows = result2.scalars().all()
     return ProvidersResponse(providers=[_provider_to_response(r) for r in rows])
@@ -247,6 +255,12 @@ async def patch_model_routing(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> RoutingResponse:
     for entry in payload.entries:
+        providers = {entry.preferred_provider, entry.fallback_provider}
+        if any(provider and provider != "openrouter" for provider in providers):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="This deployment only supports OpenRouter routing providers.",
+            )
         result = await session.execute(
             select(ModelRoutingEntryModel).where(ModelRoutingEntryModel.job_type == entry.job_type)
         )
@@ -401,13 +415,14 @@ async def test_provider(payload: TestProviderRequest) -> TestProviderResponse:
         t0 = time.monotonic()
         health = await provider.healthcheck()
         latency_ms = int((time.monotonic() - t0) * 1000)
-        ok = bool(health.get("ok", False))
+        health_payload = health.model_dump() if hasattr(health, "model_dump") else dict(health)
+        ok = bool(health_payload.get("ok", False))
         return TestProviderResponse(
             ok=ok,
             latency_ms=latency_ms,
             provider=payload.provider,
             model=payload.model,
-            error=None if ok else str(health.get("error", "healthcheck failed")),
+            error=None if ok else str(health_payload.get("error", "healthcheck failed")),
         )
     except Exception as exc:
         return TestProviderResponse(

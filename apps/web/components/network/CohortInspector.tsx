@@ -8,10 +8,9 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useNetworkUIStore } from '@/lib/state/networkUiStore';
 import {
-  ARCHETYPES,
   type NetworkDataset,
   type NetworkNodeAttrs,
-} from '@/lib/network/seededDataset';
+} from '@/lib/network/types';
 import { IdeologyAxesRadial } from './IdeologyAxesRadial';
 import { IssueStanceBars } from './IssueStanceBars';
 import { Users, MousePointerClick } from 'lucide-react';
@@ -45,7 +44,7 @@ export function CohortInspector({ data }: Props) {
     return out.sort((a, b) => b.weight - a.weight).slice(0, 12);
   }, [data, node, activeLayer]);
 
-  if (!node) {
+  if (!data || !node) {
     return (
       <Card className="w-[380px] shrink-0 p-6 grid place-items-center text-center min-h-[300px]">
         <div className="space-y-2 text-muted-foreground">
@@ -60,7 +59,7 @@ export function CohortInspector({ data }: Props) {
   }
 
   const attrs = node.attrs;
-  const archetype = ARCHETYPES.find((a) => a.key === attrs.archetype);
+  const archetype = data.archetypes.find((a) => a.key === attrs.archetype);
 
   return (
     <Card className="w-[380px] shrink-0 p-4 space-y-4">
@@ -69,9 +68,9 @@ export function CohortInspector({ data }: Props) {
           <div className="flex items-center gap-2">
             <span
               className="size-2.5 rounded-full"
-              style={{ background: archetype?.color }}
+              style={{ background: archetype?.color ?? attrs.color }}
             />
-            <h3 className="font-semibold truncate">{archetype?.label}</h3>
+            <h3 className="font-semibold truncate">{archetype?.label ?? attrs.archetype}</h3>
           </div>
           <p className="text-xs text-muted-foreground truncate">
             {attrs.label}

@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Pause, Play } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface QueueInfo {
@@ -30,6 +30,10 @@ const QUEUE_COLORS: Record<string, string> = {
 
 export function QueueCard({ queue, onTogglePause }: QueueCardProps) {
   const [paused, setPaused] = useState(queue.paused);
+
+  useEffect(() => {
+    setPaused(queue.paused);
+  }, [queue.paused]);
 
   function handleToggle() {
     const next = !paused;

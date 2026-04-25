@@ -35,7 +35,7 @@ const wizardSchema = z.object({
     .min(20, 'Please provide at least 20 characters describing your scenario.')
     .max(5000, 'Scenario must be under 5,000 characters.'),
   tickDuration: z.enum(['1m', '5m', '15m', '1h', '4h', '1d']).default('1d'),
-  numberOfTicks: z.number().int().min(10).max(1000).default(8),
+  numberOfTicks: z.number().int().min(10).max(1000).default(10),
   provider: z.string().default('openrouter'),
   qsaMode: z.boolean().default(true),
   autoFanout: z.boolean().default(true),
@@ -47,10 +47,10 @@ const wizardSchema = z.object({
     useUploadedDocs: z.boolean().default(false),
   }).default({}),
   modelRouting: z.object({
-    initializer: z.string().default('openai/gpt-4o'),
-    cohortDecision: z.string().default('openai/gpt-4o'),
-    heroDecision: z.string().default('openai/gpt-4o'),
-    godReview: z.string().default('openai/gpt-4o'),
+    initializer: z.string().default('deepseek/deepseek-v3.2'),
+    cohortDecision: z.string().default('deepseek/deepseek-v3.2'),
+    heroDecision: z.string().default('deepseek/deepseek-v3.2'),
+    godReview: z.string().default('openai/gpt-5.5'),
   }).default({}),
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().int().min(256).max(8192).default(2048),
@@ -125,7 +125,7 @@ const WIZARD_STEPS = [
 const PRO_TIPS: Record<number, string> = {
   0: 'Be specific about time scale and stakeholder groups for richer simulations.',
   1: 'Enabling SoT snapshot pins the taxonomy version for reproducibility.',
-  2: 'Use GPT-4o Mini for cohort decisions to reduce cost while keeping quality for God review.',
+  2: 'Use DeepSeek V3.2 for agent loops and reserve GPT-5.5 for God review.',
   3: 'Review all settings before launching — you can duplicate and reconfigure later.',
 };
 
@@ -204,7 +204,7 @@ export function BigBangWizard() {
     defaultValues: {
       scenarioText: '',
       tickDuration: '1d',
-      numberOfTicks: 8,
+      numberOfTicks: 10,
       provider: 'openrouter',
       qsaMode: true,
       autoFanout: true,
@@ -216,10 +216,10 @@ export function BigBangWizard() {
         useUploadedDocs: false,
       },
       modelRouting: {
-        initializer: 'openai/gpt-4o',
-        cohortDecision: 'openai/gpt-4o',
-        heroDecision: 'openai/gpt-4o',
-        godReview: 'openai/gpt-4o',
+        initializer: 'deepseek/deepseek-v3.2',
+        cohortDecision: 'deepseek/deepseek-v3.2',
+        heroDecision: 'deepseek/deepseek-v3.2',
+        godReview: 'openai/gpt-5.5',
       },
       temperature: 0.7,
       maxTokens: 2048,
@@ -243,9 +243,14 @@ export function BigBangWizard() {
           ...values,
           idempotencyKey: `wizard-${Date.now()}`,
         });
-        const runId = (result as any)?.run_id ?? `run_${Date.now()}`;
-        toast.success('Big Bang created! Simulation initializing…');
-        router.push(`/runs/${runId}/dashboard`);
+        if (result.status === 'failed' || result.enqueued === false) {
+          toast.error('Big Bang was created but initialization did not queue.', {
+            description: result.error ?? 'Check the Jobs page and backend worker status.',
+          });
+        } else {
+          toast.success('Big Bang created! Simulation initializing...');
+        }
+        router.push(`/runs/${result.run_id}/dashboard`);
       } catch {
         toast.error('Failed to create simulation. Please try again.');
       }

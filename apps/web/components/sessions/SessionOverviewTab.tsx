@@ -11,24 +11,27 @@ interface SessionOverviewTabProps {
   run: Run;
 }
 
-const SUMMARY_METRICS = [
-  { label: 'Universes', value: '4', icon: GitBranch, color: 'text-brand-600' },
-  { label: 'Ticks completed', value: '24', icon: Clock, color: 'text-sky-600' },
-  { label: 'Archetypes', value: '6', icon: Users, color: 'text-emerald-600' },
-  { label: 'Peak activity', value: 'Tick 18', icon: Activity, color: 'text-amber-600' },
-];
-
-const FILE_TREE_PREVIEW = [
-  { name: 'config/', type: 'dir' },
-  { name: 'source_of_truth_snapshot/', type: 'dir' },
-  { name: 'universes/U000/', type: 'dir' },
-  { name: '  ticks/T001–T024/', type: 'dir' },
-  { name: '  actors/', type: 'dir' },
-  { name: 'universes/U001/', type: 'dir' },
-  { name: 'manifest.json', type: 'file' },
-];
+function buildFileTreePreview(rootUniverseId: string, currentTick: number) {
+  const tickFolder = currentTick > 0 ? `ticks/T${String(currentTick).padStart(3, '0')}/` : 'ticks/';
+  return [
+    { name: 'config/', type: 'dir' },
+    { name: 'source_of_truth_snapshot/', type: 'dir' },
+    { name: `universes/${rootUniverseId}/`, type: 'dir' },
+    { name: `  ${tickFolder}`, type: 'dir' },
+    { name: '  actors/', type: 'dir' },
+    { name: 'manifest.json', type: 'file' },
+  ];
+}
 
 export function SessionOverviewTab({ run }: SessionOverviewTabProps) {
+  const rootUniverseId = run.root_universe_id ?? run.big_bang_id;
+  const fileTreePreview = buildFileTreePreview(rootUniverseId, run.current_tick);
+  const summaryMetrics = [
+    { label: 'Universes', value: run.universe_count.toLocaleString(), icon: GitBranch, color: 'text-brand-600' },
+    { label: 'Ticks completed', value: run.current_tick.toLocaleString(), icon: Clock, color: 'text-sky-600' },
+    { label: 'Archetypes', value: run.initial_archetype_count.toLocaleString(), icon: Users, color: 'text-emerald-600' },
+    { label: 'Max ticks', value: run.max_ticks.toLocaleString(), icon: Activity, color: 'text-amber-600' },
+  ];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left: Session Overview card */}
@@ -38,7 +41,7 @@ export function SessionOverviewTab({ run }: SessionOverviewTabProps) {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Session Overview</CardTitle>
               <Button asChild variant="outline" size="sm" className="gap-1.5">
-                <Link href={`/runs/${run.id}/universes/U000/review`}>
+                <Link href={`/runs/${run.id}/universes/${rootUniverseId}/review`}>
                   <Eye className="h-3.5 w-3.5" />
                   Open Review Mode
                 </Link>
@@ -86,7 +89,7 @@ export function SessionOverviewTab({ run }: SessionOverviewTabProps) {
 
         {/* Summary metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {SUMMARY_METRICS.map(({ label, value, icon: Icon, color }) => (
+          {summaryMetrics.map(({ label, value, icon: Icon, color }) => (
             <Card key={label} className="text-center">
               <CardContent className="pt-4 pb-3">
                 <Icon className={`h-5 w-5 mx-auto mb-1 ${color}`} />
@@ -106,16 +109,14 @@ export function SessionOverviewTab({ run }: SessionOverviewTabProps) {
           </CardHeader>
           <CardContent>
             <ul className="space-y-1 text-sm font-mono">
-              {FILE_TREE_PREVIEW.map((item) => (
+              {fileTreePreview.map((item) => (
                 <li
                   key={item.name}
                   className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-muted/50 transition-colors ${
                     item.type === 'dir' ? 'text-foreground' : 'text-muted-foreground'
                   }`}
                 >
-                  <span className="text-muted-foreground text-xs">
-                    {item.type === 'dir' ? '📁' : '📄'}
-                  </span>
+                  <span className="text-muted-foreground text-xs">{item.type === 'dir' ? '[d]' : '[f]'}</span>
                   <span className="text-xs">{item.name}</span>
                 </li>
               ))}

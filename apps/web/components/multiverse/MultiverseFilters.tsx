@@ -16,7 +16,7 @@ import {
   STATUS_BADGE_CLS,
   type MultiverseTreePayload,
   type UniverseStatus,
-} from '@/lib/mocks/multiverse';
+} from '@/lib/multiverse/types';
 import { cn } from '@/lib/utils';
 
 const STATUS_OPTIONS: UniverseStatus[] = [
@@ -135,7 +135,7 @@ export function MultiverseFilters({
             id="universe-search"
             value={searchTerm}
             onChange={(e) => onSearchTermChange(e.target.value)}
-            placeholder="U001"
+            placeholder="Universe ID"
             className="h-8 pl-7 text-xs"
           />
         </div>

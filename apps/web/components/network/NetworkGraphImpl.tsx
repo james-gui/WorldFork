@@ -9,7 +9,7 @@ import { MinimapInset } from './MinimapInset';
 import {
   useNetworkUIStore,
 } from '@/lib/state/networkUiStore';
-import type { NetworkDataset, NetworkNodeAttrs } from '@/lib/network/seededDataset';
+import type { NetworkDataset, NetworkNodeAttrs } from '@/lib/network/types';
 
 interface Props {
   data: NetworkDataset;
@@ -32,6 +32,7 @@ export default function NetworkGraphImpl({ data }: Props) {
   const showEdgesThreshold = useNetworkUIStore((s) => s.showEdgesThreshold);
   const sliderFilters = useNetworkUIStore((s) => s.sliderFilters);
   const cohortStanceRange = useNetworkUIStore((s) => s.cohortStanceRange);
+  const computeNeighbors = useNetworkUIStore((s) => s.computeNeighbors);
   const selectedNodeId = useNetworkUIStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useNetworkUIStore((s) => s.setSelectedNodeId);
 
@@ -59,8 +60,8 @@ export default function NetworkGraphImpl({ data }: Props) {
     }
 
     // Run a small synchronous ForceAtlas2 pass for nicer placement.
-    // We avoid the worker for the mock dataset — synchronous iterations are
-    // very fast for ~120 nodes and free us from postMessage SSR concerns.
+    // The API returns stable coordinates; a light synchronous pass keeps the
+    // graph readable without a worker dependency during SSR hydration.
     try {
       forceAtlas2.assign(graph, {
         iterations: 60,
@@ -74,7 +75,7 @@ export default function NetworkGraphImpl({ data }: Props) {
         },
       });
     } catch {
-      // FA2 sometimes complains about isolated nodes — fall back to seeded coords.
+      // FA2 sometimes complains about isolated nodes; keep the API coordinates.
     }
 
     const sigma = new Sigma(graph, containerRef.current, {
@@ -115,6 +116,12 @@ export default function NetworkGraphImpl({ data }: Props) {
     const graph = graphRef.current;
     if (!sigma || !graph) return;
 
+    const neighborIds = new Set<string>();
+    if (computeNeighbors && selectedNodeId && graph.hasNode(selectedNodeId)) {
+      neighborIds.add(selectedNodeId);
+      graph.forEachNeighbor(selectedNodeId, (neighbor) => neighborIds.add(neighbor));
+    }
+
     sigma.setSetting('nodeReducer', (node, attrs) => {
       const a = attrs as unknown as NetworkNodeAttrs;
       const passes =
@@ -126,9 +133,10 @@ export default function NetworkGraphImpl({ data }: Props) {
         a.cohortStance >= cohortStanceRange.min &&
         a.cohortStance <= cohortStanceRange.max;
       const isSelected = node === selectedNodeId;
+      const outsideNeighborhood = neighborIds.size > 0 && !neighborIds.has(node);
       return {
         ...attrs,
-        hidden: !passes,
+        hidden: !passes || outsideNeighborhood,
         size: isSelected ? a.size * 1.6 : a.size,
         zIndex: isSelected ? 2 : 1,
         highlighted: isSelected || undefined,
@@ -136,12 +144,15 @@ export default function NetworkGraphImpl({ data }: Props) {
       };
     });
 
-    sigma.setSetting('edgeReducer', (_edge, attrs) => {
+    sigma.setSetting('edgeReducer', (edge, attrs) => {
       const layer = (attrs as { layer?: string }).layer;
       const weight = (attrs as { weight?: number }).weight ?? 0;
+      const outsideNeighborhood =
+        neighborIds.size > 0 &&
+        (!neighborIds.has(graph.source(edge)) || !neighborIds.has(graph.target(edge)));
       return {
         ...attrs,
-        hidden: layer !== activeLayer || weight < showEdgesThreshold,
+        hidden: layer !== activeLayer || weight < showEdgesThreshold || outsideNeighborhood,
       };
     });
 
@@ -151,6 +162,7 @@ export default function NetworkGraphImpl({ data }: Props) {
     showEdgesThreshold,
     sliderFilters,
     cohortStanceRange,
+    computeNeighbors,
     selectedNodeId,
   ]);
 

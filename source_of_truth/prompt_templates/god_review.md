@@ -142,7 +142,7 @@ For `actor_state_override`:
   "type": "actor_state_override",
   "actor_id": "cohort_couriers_oppose_active",
   "field": "emotions.fear",
-  "value": 7.5,
+  "new_value": 7.5,
   "rationale": "Branch where the crackdown rumor reached this cohort first."
 }
 ```
@@ -152,7 +152,8 @@ For `hero_decision_override`:
 {
   "type": "hero_decision_override",
   "hero_id": "hero_mayor_nguyen",
-  "decision_override": {"queued_events": [{"event_type": "policy_vote", "title": "Emergency moratorium", "scheduled_tick": 8}]},
+  "tick": 8,
+  "new_decision": {"queued_events": [{"event_type": "policy_vote", "title": "Emergency moratorium", "scheduled_tick": 8}]},
   "rationale": "Mayor pivots to a moratorium instead of the press conference."
 }
 ```
@@ -162,8 +163,9 @@ For `hero_decision_override`:
 1. WorldFork must NOT generate operational or tactical guidance for real-world violence, illegal activity, or specific instructions for harm. Categorize escalation risk; do not operationalize it.
 2. `branch_delta` MUST be `null` when `decision` is `continue`, `freeze`, or `kill`.
 3. `branch_delta` MUST be present and well-formed when `decision` is `spawn_candidate` or `spawn_active`.
-4. The branch_delta `type` field must match its required fields (see schema).
-5. You do NOT rewrite parent history. Express divergence as a child branch only.
+4. Use `complete_universe` only when the recent evidence is quiet: no material new/resolved events, social posting has largely died down, reach is low, and mobilization risk is low.
+5. The branch_delta `type` field must match its required fields (see schema).
+6. You do NOT rewrite parent history. Express divergence as a child branch only.
 
 ## Output
 

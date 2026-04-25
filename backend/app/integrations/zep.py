@@ -23,23 +23,35 @@ async def zep_status_summary() -> dict:
             - ``last_latency_ms`` (int | None): Last measured latency in ms.
     """
     try:
-        # Attempt to use the local memory provider as a health proxy
-        # when the Zep adapter is not yet wired up (pre-B6-A state)
-        from backend.app.memory.local import LocalMemoryProvider
-
-        start = time.monotonic()
-        provider = LocalMemoryProvider()
-        health = await provider.healthcheck()
-        latency_ms = int((time.monotonic() - start) * 1000)
-
+        from backend.app.core.config import settings
         from backend.app.core.clock import now_utc
 
+        if not settings.zep_enabled or not settings.zep_api_key:
+            return {
+                "enabled": False,
+                "mode": "local",
+                "degraded": False,
+                "last_healthcheck_at": now_utc().isoformat(),
+                "last_latency_ms": 0,
+            }
+
+        from backend.app.memory.factory import get_memory
+
+        start = time.monotonic()
+        provider = get_memory()
+        health = await provider.healthcheck()
+        latency_ms = int((time.monotonic() - start) * 1000)
+        health_payload = health.model_dump() if hasattr(health, "model_dump") else dict(health)
+        is_zep = provider.__class__.__name__ == "ZepMemoryProvider"
+        ok = bool(health_payload.get("ok", False))
+
         return {
-            "enabled": False,  # Zep SDK not wired yet — local fallback active
-            "mode": "local",
-            "degraded": not health.get("ok", True),
+            "enabled": bool(is_zep),
+            "mode": "zep" if is_zep else "local",
+            "degraded": bool(getattr(provider, "degraded", False)) or not ok,
             "last_healthcheck_at": now_utc().isoformat(),
             "last_latency_ms": latency_ms,
+            "error": None if ok else str(health_payload.get("error", "healthcheck failed")),
         }
     except Exception as exc:
         return {

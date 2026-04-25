@@ -23,6 +23,14 @@ _CREATE_BODY = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _stub_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_enqueue(envelope):
+        return envelope.job_id
+
+    monkeypatch.setattr("backend.app.api.runs.enqueue", _fake_enqueue)
+
+
 # ---------------------------------------------------------------------------
 # POST /api/runs — create
 # ---------------------------------------------------------------------------
@@ -34,7 +42,9 @@ async def test_create_run_returns_202(client: AsyncClient):
     data = resp.json()
     assert "run_id" in data
     assert "root_universe_id" in data
-    assert data["status"] == "draft"
+    assert data["status"] == "initializing"
+    assert data["enqueued"] is True
+    assert data["job_id"]
 
 
 async def test_create_run_persists_to_db(client: AsyncClient, db_session):
@@ -48,7 +58,7 @@ async def test_create_run_persists_to_db(client: AsyncClient, db_session):
     detail = get_resp.json()
     assert detail["run_id"] == run_id
     assert detail["scenario_text"] == _CREATE_BODY["scenario_text"]
-    assert detail["status"] == "draft"
+    assert detail["status"] == "initializing"
 
 
 # ---------------------------------------------------------------------------
@@ -121,10 +131,10 @@ async def test_list_runs_search_by_display_name(client: AsyncClient):
 
 async def test_list_runs_filter_by_status(client: AsyncClient):
     await client.post("/api/runs", json=_CREATE_BODY)
-    resp = await client.get("/api/runs", params={"status": "draft"})
+    resp = await client.get("/api/runs", params={"status": "initializing"})
     assert resp.status_code == 200
     data = resp.json()
-    assert all(i["status"] == "draft" for i in data["items"])
+    assert all(i["status"] == "initializing" for i in data["items"])
 
 
 async def test_list_runs_pagination(client: AsyncClient):

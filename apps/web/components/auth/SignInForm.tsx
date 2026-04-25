@@ -25,7 +25,6 @@ export function SignInForm() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    // Auth stub — no real authentication yet.
     setTimeout(() => {
       setLoading(false);
       toast.info('Auth coming soon', {

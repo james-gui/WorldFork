@@ -180,10 +180,12 @@ async def test_get_error_logs_filter_run_id(client, db_session):
 
 @pytest.mark.asyncio
 async def test_get_audit_logs_placeholder(client):
-    """Audit log returns empty list (placeholder until B11-A)."""
+    """Audit log returns lifecycle entries when jobs have been persisted."""
     resp = await client.get("/api/logs/audit")
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    assert isinstance(data, list)
+    assert all(item["resource"].startswith("job:") for item in data)
 
 
 # ---------------------------------------------------------------------------

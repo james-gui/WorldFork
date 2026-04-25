@@ -3,12 +3,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './client';
 import {
-  buildMultiverseTree,
   type MultiverseTreePayload,
   type MultiverseNodeData,
   type UniverseStatus,
   type BranchTrigger,
-} from '@/lib/mocks/multiverse';
+} from '@/lib/multiverse/types';
 import type {
   MultiverseTreeResponse,
   MultiverseTreeNode,
@@ -35,21 +34,52 @@ function safeStatus(s: string): UniverseStatus {
   return KNOWN_STATUSES.has(s) ? (s as UniverseStatus) : 'active';
 }
 
-function adaptApiTreeToPayload(apiTree: MultiverseTreeResponse): MultiverseTreePayload {
-  const nodeMap = new Map(apiTree.nodes.map((n) => [n.universe_id, n]));
+function metricNumber(
+  metrics: Record<string, unknown>,
+  keys: string[],
+  fallback = 0,
+): number {
+  for (const key of keys) {
+    const value = metrics[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return fallback;
+}
 
+function branchTriggerFromNode(node: MultiverseTreeNode): BranchTrigger {
+  const deltaType = typeof node.branch_delta?.type === 'string'
+    ? node.branch_delta.type
+    : '';
+  const reason = `${node.branch_reason} ${deltaType}`.toLowerCase();
+  if (reason.includes('tech') || reason.includes('breakthrough')) return 'tech_breakthrough';
+  if (reason.includes('movement') || reason.includes('mobilization')) return 'social_movement';
+  if (reason.includes('econom') || reason.includes('unemployment')) return 'economic_crisis';
+  if (reason.includes('media') || reason.includes('viral')) return 'media_event';
+  if (reason.includes('god')) return 'godagent_decision';
+  return 'policy_change';
+}
+
+function adaptApiTreeToPayload(
+  apiTree: MultiverseTreeResponse,
+  metrics?: MultiverseMetricsResponse | null,
+): MultiverseTreePayload {
   function countChildren(uid: string): number {
     return apiTree.edges.filter((e) => e.source === uid).length;
   }
 
-  const nodes: MultiverseNodeData[] = apiTree.nodes.map((n: MultiverseTreeNode, idx) => {
+  const nodes: MultiverseNodeData[] = apiTree.nodes.map((n: MultiverseTreeNode) => {
     const childCount = countChildren(n.universe_id);
     const status = safeStatus(n.status);
-    const sparklen = 18;
-    const sparkSeed = idx * 17 + (n.current_tick ?? 0);
+    const divergenceScore = metricNumber(
+      n.latest_metrics,
+      ['divergence_score', 'divergence_vs_parent', 'divergence', 'branch_divergence'],
+      n.parent_universe_id ? 0.1 : 0,
+    );
+    const confidence = metricNumber(n.latest_metrics, ['confidence', 'llm_confidence'], 1);
+    const sparklen = Math.max(2, Math.min(18, (n.current_tick ?? 0) + 1));
     const divergence_series = Array.from({ length: sparklen }, (_, i) => ({
       i,
-      v: +(0.3 + 0.4 * Math.sin((i + sparkSeed) * 0.42)).toFixed(3),
+      v: divergenceScore,
     }));
 
     return {
@@ -58,24 +88,25 @@ function adaptApiTreeToPayload(apiTree: MultiverseTreeResponse): MultiverseTreeP
       label: `U-${n.universe_id.slice(-6)} (tick ${n.current_tick})`,
       depth: n.depth,
       status,
-      branch_trigger: 'policy_change' as BranchTrigger,
+      current_tick: n.current_tick ?? 0,
+      branch_trigger: branchTriggerFromNode(n),
       branch_from_tick: n.branch_from_tick ?? 0,
       branch_tick: n.branch_from_tick ?? 0,
-      divergence_score: +(0.1 + 0.6 * Math.abs(Math.sin(idx * 1.3))).toFixed(3),
-      confidence: +(0.5 + 0.4 * Math.abs(Math.cos(idx * 0.9))).toFixed(3),
+      divergence_score: divergenceScore,
+      confidence,
       child_count: childCount,
       descendant_count: n.descendant_count,
       collapsed_children_count: 0,
       divergence_series,
-      lineage_path: [],
-      branch_delta: {},
+      lineage_path: n.lineage_path ?? [],
+      branch_delta: n.branch_delta ?? {},
       metrics: {
-        population: 14,
-        posts: 100 + idx * 12,
-        events: 5 + idx,
+        population: metricNumber(n.latest_metrics, ['population', 'active_population', 'total_population_modeled']),
+        posts: metricNumber(n.latest_metrics, ['posts', 'post_count', 'social_posts', 'post_volume']),
+        events: metricNumber(n.latest_metrics, ['events', 'event_count', 'pending_events']),
         tickProgress: Math.min(1, (n.current_tick ?? 0) / Math.max(1, apiTree.max_ticks)),
       },
-      created_at: new Date().toISOString(),
+      created_at: n.created_at ?? '',
     };
   });
 
@@ -96,19 +127,19 @@ function adaptApiTreeToPayload(apiTree: MultiverseTreeResponse): MultiverseTreeP
     edges,
     events: [],
     kpis: {
-      activeUniverses: activeCount,
-      totalBranches: nodes.length - 1,
-      maxDepth,
-      branchBudgetPct: 0,
-      activeBranchesPerTick: 0,
-      branchBudgetUsed: nodes.length - 1,
-      branchBudgetLimit: apiTree.max_ticks,
+      activeUniverses: metrics?.active_universes ?? activeCount,
+      totalBranches: metrics?.total_branches ?? nodes.length - 1,
+      maxDepth: metrics?.max_depth ?? maxDepth,
+      branchBudgetPct: metrics?.branch_budget_pct ?? 0,
+      activeBranchesPerTick: metrics?.active_branches_per_tick ?? 0,
+      branchBudgetUsed: metrics?.branch_budget_used ?? nodes.length - 1,
+      branchBudgetLimit: metrics?.branch_budget_limit ?? apiTree.max_ticks,
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Multiverse tree — with 404 fallback to seeded mock during initial deployment
+// Multiverse tree
 // ---------------------------------------------------------------------------
 
 export function useMultiverseTree(bbId?: string) {
@@ -116,17 +147,16 @@ export function useMultiverseTree(bbId?: string) {
     queryKey: ['multiverseTree', bbId],
     queryFn: async () => {
       if (!bbId) return null;
-      try {
-        const apiTree = await apiFetch<MultiverseTreeResponse>(`/api/multiverse/${bbId}/tree`);
-        return adaptApiTreeToPayload(apiTree);
-      } catch (err: unknown) {
-        const status = (err as { status?: number })?.status;
-        if (status === 404) {
-          // Graceful degradation: return seeded mock when run doesn't exist yet
-          return buildMultiverseTree({ bbId });
-        }
-        throw err;
-      }
+      const [apiTree, metrics] = await Promise.all([
+        apiFetch<MultiverseTreeResponse>(`/api/multiverse/${bbId}/tree`),
+        apiFetch<MultiverseMetricsResponse>(`/api/multiverse/${bbId}/metrics`)
+          .catch((err: unknown) => {
+            const status = (err as { status?: number })?.status;
+            if (status === 404) return null;
+            throw err;
+          }),
+      ]);
+      return adaptApiTreeToPayload(apiTree, metrics);
     },
     enabled: !!bbId,
     staleTime: 60_000,
@@ -222,15 +252,20 @@ export function useFocusBranch(bbId?: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Stubs that map to universe-level pause/resume/kill (no dedicated multiverse endpoint)
+// Mutations backed by multiverse and universe endpoints
 // ---------------------------------------------------------------------------
 
 export function useSimulateNextTick() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { bbId: string }) => {
-      // TODO(B5+): wire to real endpoint when a multiverse-level tick trigger is available
-      await new Promise((r) => setTimeout(r, 200));
-      return { ok: true, bbId: payload.bbId };
+    mutationFn: (payload: { bbId: string }) =>
+      apiFetch<{ big_bang_id: string; enqueued: number; job_ids: string[] }>(
+        `/api/multiverse/${payload.bbId}/simulate-next-tick`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['multiverseTree'] });
+      qc.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 }
@@ -248,12 +283,9 @@ export function useFreezeUniverse() {
 
 export function useKillUniverse() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (uid: string) => {
-      // TODO(B5+): wire to DELETE /api/universes/{uid} or equivalent kill endpoint when available
-      await new Promise((r) => setTimeout(r, 150));
-      return { ok: true, uid };
-    },
+  return useMutation<{ universe_id: string; status: string }, Error, string>({
+    mutationFn: (uid: string) =>
+      apiFetch(`/api/universes/${uid}/kill`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['multiverseTree'] });
     },
@@ -261,11 +293,17 @@ export function useKillUniverse() {
 }
 
 export function useReplayFromBranch() {
-  return useMutation({
-    mutationFn: async (uid: string) => {
-      // TODO(B5+): wire to real replay endpoint when available
-      await new Promise((r) => setTimeout(r, 150));
-      return { ok: true, uid };
+  const qc = useQueryClient();
+  return useMutation<{ job_id: string; universe_id: string }, Error, string>({
+    mutationFn: (uid: string) =>
+      apiFetch(`/api/universes/${uid}/replay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tick: null }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['multiverseTree'] });
+      qc.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 }

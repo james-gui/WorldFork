@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import { CohortDetailRow } from './CohortDetailRow';
 import { CohortBarChart } from './CohortBarChart';
-import type { CohortDetail } from '@/lib/mocks/dashboard';
+import type { CohortDetail } from '@/lib/dashboard/types';
 import { formatNumber } from '@/lib/utils';
 
 interface CohortInspectorProps {

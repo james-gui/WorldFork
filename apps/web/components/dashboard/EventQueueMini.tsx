@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
-import type { QueueEvent } from '@/lib/mocks/dashboard';
+import type { QueueEvent } from '@/lib/dashboard/types';
 
 interface EventQueueMiniProps {
   events: QueueEvent[];

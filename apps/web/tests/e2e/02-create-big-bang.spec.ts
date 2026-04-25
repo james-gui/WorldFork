@@ -17,10 +17,6 @@ test('create big bang wizard loads, accepts scenario text, and can proceed', asy
   // Click Next to advance wizard step
   await nextBtn.click();
 
-  // After clicking, either we stay on a later step (next step heading visible)
-  // or get a toast / redirect — either way no crash
-  await page.waitForTimeout(1000);
-
-  // The page should still be rendering (not crashed to error boundary)
+  await expect(page.getByRole('heading', { name: 'Data sources' })).toBeVisible();
   await expect(page.locator('body')).not.toContainText('Application Error');
 });

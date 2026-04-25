@@ -6,7 +6,7 @@ WorldFork is an explainable, recursively branching social-simulation platform. A
 
 ```bash
 cp .env.example .env
-vim .env   # paste real OPENROUTER_API_KEY and ZEP_API_KEY
+vim .env   # paste real OPENROUTER_API_KEY; leave ZEP_ENABLED=false
 
 make build
 make up
@@ -16,20 +16,20 @@ make seed
 
 | Service | URL |
 |---------|-----|
-| API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
-| Web | http://localhost:3000 |
+| API | http://localhost:8003 |
+| API docs | http://localhost:8003/docs |
+| Web | http://localhost:3003 |
 
 ## Frontend Dev Commands
 
 ```bash
 cd apps/web
 
-# Start the Next.js dev server (port 3000)
-pnpm dev
+# Start the Next.js dev server (port 3003)
+pnpm dev --port 3003
 
 # Generate typed API client from the FastAPI OpenAPI schema
-# (requires the backend to be running at http://localhost:8000)
+# (requires the backend to be running at http://localhost:8003)
 pnpm codegen:api
 
 # Type check

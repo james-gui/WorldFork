@@ -2,10 +2,12 @@
 
 import * as React from 'react';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Run } from '@/lib/types/run';
+import { useExportRun } from '@/lib/api/runs';
 
 interface SessionReproducibilityTabProps {
   run: Run;
@@ -49,17 +51,17 @@ const PRESERVED_ITEMS = [
 ];
 
 export function SessionReproducibilityTab({ run }: SessionReproducibilityTabProps) {
-  const [checking, setChecking] = React.useState(false);
-  const [result, setResult] = React.useState<'idle' | 'pass' | 'fail'>('idle');
+  const exportRun = useExportRun();
+  const [queuedJobId, setQueuedJobId] = React.useState<string | null>(null);
 
-  const handleVerify = () => {
-    setChecking(true);
-    setResult('idle');
-    // Stub mutation — replace with real API call when backend is ready
-    setTimeout(() => {
-      setChecking(false);
-      setResult('pass');
-    }, 1500);
+  const handleExport = async () => {
+    try {
+      const result = await exportRun.mutateAsync(run.id);
+      setQueuedJobId(result.job_id);
+      toast.success(`Export job ${result.job_id} queued.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to queue export.');
+    }
   };
 
   return (
@@ -71,21 +73,21 @@ export function SessionReproducibilityTab({ run }: SessionReproducibilityTabProp
             What&apos;s Preserved
           </CardTitle>
           <div className="flex items-center gap-2">
-            {result === 'pass' && (
+            {queuedJobId && (
               <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                 <CheckCircle2 className="h-3 w-3" />
-                Integrity verified
+                Export queued
               </Badge>
             )}
             <Button
               variant="outline"
               size="sm"
-              onClick={handleVerify}
-              disabled={checking}
+              onClick={handleExport}
+              disabled={exportRun.isPending}
               className="gap-1.5"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              {checking ? 'Verifying…' : 'Verify integrity'}
+              {exportRun.isPending ? 'Queuing...' : 'Queue export'}
             </Button>
           </div>
         </div>

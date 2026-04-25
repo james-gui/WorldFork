@@ -21,9 +21,9 @@ async def test_openrouter_healthcheck_live() -> None:
     provider = OpenRouterProvider(
         api_key=api_key,
         base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-        default_model="openai/gpt-4o",
-        fallback_model="openai/gpt-4o-mini",
-        http_referer="http://localhost:3000",
+        default_model=os.environ.get("DEFAULT_MODEL", "deepseek/deepseek-v3.2"),
+        fallback_model=os.environ.get("FALLBACK_MODEL", "openai/gpt-4o-mini"),
+        http_referer="http://localhost:3003",
         x_title="WorldFork-tests",
     )
     health = await provider.healthcheck()

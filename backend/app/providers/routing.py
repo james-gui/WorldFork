@@ -20,16 +20,20 @@ if TYPE_CHECKING:
 # Defaults — derived from PRD §16.4 example, generalised across job types.
 # ---------------------------------------------------------------------------
 
-_PREFERRED_MODEL = "openai/gpt-5.4"
-_FALLBACK_MODEL = "openai/gpt-5.4-mini"
+_AGENT_MODEL = "deepseek/deepseek-v3.2"
+_AGENT_FALLBACK_MODEL = "openai/gpt-4o-mini"
+_GOD_MODEL = "openai/gpt-5.5"
+_GOD_FALLBACK_MODEL = "openai/gpt-5.4"
 
 
 def _default_entry(job_type: JobType) -> ModelRoutingEntry:
     """Return a sane default :class:`ModelRoutingEntry` for *job_type*."""
-    # Hot agent loops use the smaller model by default; god + initializer use the bigger one.
-    use_big = job_type in {"god_agent_review", "initialize_big_bang", "branch_universe"}
-    preferred = _PREFERRED_MODEL if use_big else _FALLBACK_MODEL
-    fallback = _FALLBACK_MODEL if use_big else None
+    if job_type in {"god_agent_review", "aggregate_run_results", "force_deviation"}:
+        preferred = _GOD_MODEL
+        fallback = _GOD_FALLBACK_MODEL
+    else:
+        preferred = _AGENT_MODEL
+        fallback = _AGENT_FALLBACK_MODEL
     return ModelRoutingEntry(
         job_type=job_type,
         preferred_provider="openrouter",
@@ -61,6 +65,8 @@ _ALL_JOB_TYPES: tuple[JobType, ...] = (
     "build_review_index",
     "export_run",
     "apply_tick_results",
+    "aggregate_run_results",
+    "force_deviation",
 )
 
 
@@ -87,7 +93,7 @@ class RoutingTable:
         preferred = ModelConfig(
             provider=entry.preferred_provider,
             model=entry.preferred_model,
-            fallback_model=entry.fallback_model,
+            fallback_model=None,
             temperature=entry.temperature,
             top_p=entry.top_p,
             max_tokens=entry.max_tokens,
@@ -126,7 +132,7 @@ class RoutingTable:
 
     @classmethod
     async def from_db(cls, session: AsyncSession) -> RoutingTable:
-        """Load routing entries from the ``model_routing_entries`` table.
+        """Load routing entries from the ``settings_model_routing`` table.
 
         Falls back to :meth:`defaults` if the table is empty or unavailable.
         """
@@ -142,7 +148,7 @@ class RoutingTable:
                     "fallback_provider, fallback_model, temperature, top_p, "
                     "max_tokens, max_concurrency, requests_per_minute, "
                     "tokens_per_minute, timeout_seconds, retry_policy, "
-                    "daily_budget_usd FROM model_routing_entries"
+                    "daily_budget_usd FROM settings_model_routing"
                 )
             )
             rows = result.mappings().all()

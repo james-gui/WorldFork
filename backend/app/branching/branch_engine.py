@@ -88,6 +88,7 @@ async def commit_branch(
     branch_reason: str,
     policy_result: BranchPolicyResult,
     ledger: Ledger | None = None,
+    enqueue_first_tick: bool = True,
 ) -> BranchCommitResult:
     """Atomically branch ``parent_universe`` at ``branch_from_tick``.
 
@@ -117,7 +118,7 @@ async def commit_branch(
     from backend.app.models.branches import BranchNodeModel
     from backend.app.models.cohorts import CohortStateModel
     from backend.app.models.events import EventModel
-    from backend.app.models.heroes import HeroStateModel
+    from backend.app.models.heroes import HeroArchetypeModel, HeroStateModel
     from backend.app.models.posts import SocialPostModel
     from backend.app.models.universes import UniverseModel
 
@@ -227,8 +228,24 @@ async def commit_branch(
             HeroStateModel.universe_id == parent_universe.universe_id,
             HeroStateModel.tick == branch_from_tick,
         )
+        hero_id_map: dict[str, str] = {}
         for parent_hero in (await session.execute(hero_stmt)).scalars().all():
-            new_hero_id = namespace_id(parent_hero.hero_id, suffix)
+            new_hero_id = hero_id_map.get(parent_hero.hero_id)
+            if new_hero_id is None:
+                new_hero_id = namespace_id(parent_hero.hero_id, suffix)
+                hero_id_map[parent_hero.hero_id] = new_hero_id
+
+                parent_archetype = await session.get(HeroArchetypeModel, parent_hero.hero_id)
+                if parent_archetype is not None:
+                    existing_archetype = await session.get(HeroArchetypeModel, new_hero_id)
+                    if existing_archetype is None:
+                        session.add(
+                            _clone_hero_archetype_row(
+                                parent_archetype,
+                                new_hero_id=new_hero_id,
+                                new_big_bang_id=parent_universe.big_bang_id,
+                            )
+                        )
             child_row = _clone_hero_row(
                 parent_hero,
                 new_hero_id=new_hero_id,
@@ -307,8 +324,8 @@ async def commit_branch(
 
     # --- Post-commit side effects ----------------------------------------
     enqueued = False
-    if status == "active":
-        enqueued = await _enqueue_first_child_tick(
+    if enqueue_first_tick and status == "active":
+        enqueued = await enqueue_first_child_tick(
             run_id=parent_universe.big_bang_id,
             child_universe_id=child_universe_id,
             tick=branch_from_tick + 1,
@@ -404,6 +421,47 @@ _HERO_COPY_FIELDS = (
     "recent_posts",
     "memory_session_id",
 )
+
+
+_HERO_ARCHETYPE_COPY_FIELDS = (
+    "label",
+    "description",
+    "role",
+    "institution",
+    "location_scope",
+    "public_reach",
+    "institutional_power",
+    "financial_power",
+    "agenda_control",
+    "media_access",
+    "ideology_axes",
+    "value_priors",
+    "trust_priors",
+    "behavioral_axes",
+    "volatility",
+    "ego_sensitivity",
+    "strategic_discipline",
+    "controversy_tolerance",
+    "direct_event_power",
+    "scheduling_permissions",
+    "allowed_channels",
+)
+
+
+def _clone_hero_archetype_row(
+    src: Any,
+    *,
+    new_hero_id: str,
+    new_big_bang_id: str,
+) -> Any:
+    cls = type(src)
+    kwargs: dict[str, Any] = {
+        "hero_id": new_hero_id,
+        "big_bang_id": new_big_bang_id,
+    }
+    for f in _HERO_ARCHETYPE_COPY_FIELDS:
+        kwargs[f] = _copy_value(getattr(src, f, None))
+    return cls(**kwargs)
 
 
 def _clone_hero_row(
@@ -511,7 +569,7 @@ def _copy_value(v: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-async def _enqueue_first_child_tick(
+async def enqueue_first_child_tick(
     *,
     run_id: str,
     child_universe_id: str,
@@ -523,7 +581,22 @@ async def _enqueue_first_child_tick(
     isn't available (the caller can resume after broker recovery).
     """
     try:
+        from backend.app.core.db import SessionLocal
+        from backend.app.models.runs import BigBangRunModel
         from backend.app.workers.scheduler import enqueue, make_envelope
+
+        async with SessionLocal() as session:
+            run = await session.get(BigBangRunModel, run_id)
+            max_ticks = int(getattr(run, "max_ticks", 0) or 0) if run else 0
+            if max_ticks and tick > max_ticks:
+                _log.info(
+                    "Skipping first child tick %s for %s in run %s; max_ticks=%s",
+                    tick,
+                    child_universe_id,
+                    run_id,
+                    max_ticks,
+                )
+                return False
 
         envelope = make_envelope(
             job_type="simulate_universe_tick",

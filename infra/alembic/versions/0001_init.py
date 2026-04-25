@@ -548,7 +548,7 @@ def upgrade() -> None:
         sa.Column("fallback_model", sa.String(128), nullable=True),
         sa.Column("json_mode_required", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("tool_calling_enabled", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("extra_headers", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column(
@@ -668,7 +668,7 @@ def upgrade() -> None:
     op.create_table(
         "settings_zep",
         sa.Column("setting_id", sa.String(64), nullable=False),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("mode", sa.String(32), nullable=False),
         sa.Column("api_key_env", sa.String(128), nullable=False),
         sa.Column("cache_ttl_seconds", sa.Integer(), nullable=False, server_default="300"),

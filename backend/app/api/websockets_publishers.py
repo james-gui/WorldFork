@@ -27,7 +27,7 @@ async def publish_tick_completed(
     metrics: dict,
 ) -> None:
     """Publish tick.completed to both the run and universe channels."""
-    payload = {"universe_id": universe_id, "tick": tick, "metrics": metrics}
+    payload = {"run_id": run_id, "universe_id": universe_id, "tick": tick, "metrics": metrics}
     await publish(universe_channel(universe_id), "tick.completed", payload)
     await publish(run_channel(run_id), "tick.completed", payload)
 
@@ -39,7 +39,7 @@ async def publish_tick_started(
     tick: int,
 ) -> None:
     """Publish tick.started to both the run and universe channels."""
-    payload = {"universe_id": universe_id, "tick": tick}
+    payload = {"run_id": run_id, "universe_id": universe_id, "tick": tick}
     await publish(universe_channel(universe_id), "tick.started", payload)
     await publish(run_channel(run_id), "tick.started", payload)
 
@@ -61,6 +61,7 @@ async def publish_branch_created(
     payload = {
         "parent_universe_id": parent_universe_id,
         "child_universe_id": child_universe_id,
+        "run_id": run_id,
         "branch_from_tick": branch_from_tick,
         "depth": depth,
     }
@@ -75,7 +76,7 @@ async def publish_branch_frozen(
     frozen_at_tick: int,
 ) -> None:
     """Publish branch.frozen to the universe and run channels."""
-    payload = {"universe_id": universe_id, "frozen_at_tick": frozen_at_tick}
+    payload = {"run_id": run_id, "universe_id": universe_id, "frozen_at_tick": frozen_at_tick}
     await publish(universe_channel(universe_id), "branch.frozen", payload)
     await publish(run_channel(run_id), "branch.frozen", payload)
 
@@ -90,6 +91,7 @@ async def publish_branch_killed(
     """Publish branch.killed to the universe and run channels."""
     payload = {
         "universe_id": universe_id,
+        "run_id": run_id,
         "killed_at_tick": killed_at_tick,
         "reason": reason,
     }
@@ -123,7 +125,7 @@ async def publish_metrics_updated(
     metrics: dict,
 ) -> None:
     """Publish metrics.updated to both the run and universe channels."""
-    payload = {"universe_id": universe_id, "tick": tick, "metrics": metrics}
+    payload = {"run_id": run_id, "universe_id": universe_id, "tick": tick, "metrics": metrics}
     await publish(universe_channel(universe_id), "metrics.updated", payload)
     await publish(run_channel(run_id), "metrics.updated", payload)
 
@@ -210,6 +212,7 @@ async def publish_god_decision(
     """Publish god.decision to the universe and run channels."""
     payload: dict = {
         "universe_id": universe_id,
+        "run_id": run_id,
         "tick": tick,
         "decision": decision,
     }

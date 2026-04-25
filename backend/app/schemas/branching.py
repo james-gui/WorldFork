@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.schemas.common import UniverseStatus
 
@@ -60,7 +60,7 @@ class BranchPolicy(BaseModel):
 class CounterfactualEventRewriteDelta(BaseModel):
     """Rewrite an event in the child universe."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     type: Literal["counterfactual_event_rewrite"]
     target_event_id: str
@@ -71,7 +71,7 @@ class CounterfactualEventRewriteDelta(BaseModel):
 class ParameterShiftDelta(BaseModel):
     """Shift a parameter value in the child universe."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     type: Literal["parameter_shift"]
     target: str
@@ -81,23 +81,39 @@ class ParameterShiftDelta(BaseModel):
 class ActorStateOverrideDelta(BaseModel):
     """Override a field on an actor's state in the child universe."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     type: Literal["actor_state_override"]
     actor_id: str
     field: str
     new_value: float | int | str | dict[str, Any]
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_value(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "new_value" not in data and "value" in data:
+            data = dict(data)
+            data["new_value"] = data["value"]
+        return data
+
 
 class HeroDecisionOverrideDelta(BaseModel):
     """Override a hero's decision at a given tick in the child universe."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     type: Literal["hero_decision_override"]
     hero_id: str
     tick: int = Field(..., ge=0)
     new_decision: dict[str, Any]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_decision_override(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "new_decision" not in data and "decision_override" in data:
+            data = dict(data)
+            data["new_decision"] = data["decision_override"]
+        return data
 
 
 # Annotated discriminated union — dispatch on the "type" field

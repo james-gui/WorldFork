@@ -18,7 +18,8 @@ import {
   DEFAULT_BRANCH_POLICY,
   type BranchPolicyFormValues,
 } from '@/components/branch-policy/schema';
-import { usePatchBranchPolicy } from '@/lib/api/settings';
+import { useBranchPolicy, usePatchBranchPolicy } from '@/lib/api/settings';
+import type { BranchPolicyResponse } from '@/lib/api/types';
 
 function estimateOutcome(values: BranchPolicyFormValues) {
   const c = values.controls;
@@ -33,7 +34,37 @@ function estimateOutcome(values: BranchPolicyFormValues) {
   return { branchesPerTick, estimatedDepth, estimatedCost };
 }
 
+function formValuesFromPolicy(policy: BranchPolicyResponse): BranchPolicyFormValues {
+  const payload = policy.payload ?? {};
+  const controls = typeof payload.controls === 'object' && payload.controls !== null
+    ? payload.controls as Partial<BranchPolicyFormValues['controls']>
+    : {};
+  const enabled = typeof payload.enabled === 'object' && payload.enabled !== null
+    ? payload.enabled as Partial<BranchPolicyFormValues['enabled']>
+    : {};
+  const conditions = Array.isArray(payload.conditions)
+    ? payload.conditions as BranchPolicyFormValues['conditions']
+    : DEFAULT_BRANCH_POLICY.conditions;
+  return branchPolicySchema.parse({
+    controls: {
+      ...DEFAULT_BRANCH_POLICY.controls,
+      branchTriggerThreshold: controls.branchTriggerThreshold ?? policy.min_divergence_score,
+      cooldownPeriod: controls.cooldownPeriod ?? policy.branch_cooldown_ticks,
+      divergenceDetectionThreshold: controls.divergenceDetectionThreshold ?? policy.min_divergence_score,
+      storageLimit: controls.storageLimit ?? policy.max_active_universes,
+      perSandboxLimit: controls.perSandboxLimit ?? policy.max_branches_per_tick,
+      storageMultiplier: controls.storageMultiplier ?? Math.max(0.1, (policy.max_depth - 3) / 3),
+    },
+    enabled: {
+      ...DEFAULT_BRANCH_POLICY.enabled,
+      stagnationCleanup: enabled.stagnationCleanup ?? policy.auto_prune_low_value,
+    },
+    conditions,
+  });
+}
+
 export default function BranchPolicyStudioPage() {
+  const { data: branchPolicy } = useBranchPolicy();
   const { mutateAsync, isPending } = usePatchBranchPolicy();
 
   const form = useForm<BranchPolicyFormValues>({
@@ -44,14 +75,32 @@ export default function BranchPolicyStudioPage() {
   const values = useWatch({ control: form.control }) as BranchPolicyFormValues;
   const outcome = React.useMemo(() => estimateOutcome(values), [values]);
 
+  React.useEffect(() => {
+    if (branchPolicy) {
+      form.reset(formValuesFromPolicy(branchPolicy));
+    }
+  }, [branchPolicy, form]);
+
   const onSubmit = async (v: BranchPolicyFormValues) => {
     try {
-      await new Promise<void>((resolve) => setTimeout(resolve, 200));
-      void mutateAsync(v).catch(() => {});
+      await mutateAsync({
+        max_active_universes: Math.max(1, Math.round(v.controls.storageLimit)),
+        max_total_branches: Math.max(1, Math.round(v.controls.storageLimit * 10)),
+        max_depth: Math.max(1, Math.round(3 + v.controls.storageMultiplier * 3)),
+        max_branches_per_tick: Math.max(1, Math.round(v.controls.perSandboxLimit)),
+        branch_cooldown_ticks: Math.max(0, Math.round(v.controls.cooldownPeriod)),
+        min_divergence_score: v.controls.divergenceDetectionThreshold,
+        auto_prune_low_value: v.enabled.stagnationCleanup,
+        payload: {
+          controls: v.controls,
+          enabled: v.enabled,
+          conditions: v.conditions,
+        },
+      });
       form.reset(v);
       toast.success('Branch policy saved.');
-    } catch {
-      toast.error('Failed to save branch policy.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save branch policy.');
     }
   };
 

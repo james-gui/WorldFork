@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from copy import deepcopy
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -144,6 +145,7 @@ class ToolParser:
     # ---------------- per-actor parsers ----------------
 
     def parse_cohort_output(self, payload: dict) -> CohortDecisionOutput:
+        payload = self._normalize_schema_bounded_numbers("cohort_decision_schema", payload)
         self._validate("cohort_decision_schema", payload)
         try:
             return CohortDecisionOutput.model_validate(payload)
@@ -155,6 +157,7 @@ class ToolParser:
             ) from exc
 
     def parse_hero_output(self, payload: dict) -> HeroDecisionOutput:
+        payload = self._normalize_schema_bounded_numbers("hero_decision_schema", payload)
         self._validate("hero_decision_schema", payload)
         try:
             return HeroDecisionOutput.model_validate(payload)
@@ -166,6 +169,7 @@ class ToolParser:
             ) from exc
 
     def parse_god_output(self, payload: dict) -> GodReviewOutput:
+        payload = self._normalize_schema_bounded_numbers("god_review_schema", payload)
         self._validate("god_review_schema", payload)
         # Discriminator check: branch_delta required iff decision is spawn_*.
         decision = payload.get("decision")
@@ -176,7 +180,7 @@ class ToolParser:
                 validator_message="branch_delta missing for spawn_* decision",
                 payload_excerpt=str(payload)[:300],
             )
-        if decision in ("continue", "freeze", "kill") and bd:
+        if decision in ("continue", "freeze", "kill", "complete_universe") and bd:
             # Coerce to None — engine treats this leniently.
             _log.warning(
                 "branch_delta supplied for decision=%r; ignoring", decision
@@ -193,6 +197,7 @@ class ToolParser:
 
     def parse_initializer_output(self, payload: dict) -> dict:
         """Initializer output is open-ended — return the validated dict."""
+        payload = self._normalize_schema_bounded_numbers("initializer_schema", payload)
         self._validate("initializer_schema", payload)
         return dict(payload)
 
@@ -253,3 +258,76 @@ class ToolParser:
                 validator_message=exc.message,
                 payload_excerpt=str(payload)[:300],
             ) from exc
+
+    def _normalize_schema_bounded_numbers(self, schema_name: str, payload: dict) -> dict:
+        """Clamp numeric LLM slips to the JSONSchema bounds before validation.
+
+        Live models occasionally emit signed values for fields whose schema
+        represents magnitude/proportion (for example material stake or
+        population counts). Raw output is still written to the ledger before
+        parsing; this normalization only affects the validated runtime payload.
+        """
+        schema = self.sot.prompt_contracts.get(schema_name)
+        if not isinstance(schema, dict):
+            return dict(payload)
+        normalized = deepcopy(payload)
+        self._normalize_value(normalized, schema, root_schema=schema, key=None)
+        return normalized
+
+    def _resolve_schema(self, schema: dict, root_schema: dict) -> dict:
+        ref = schema.get("$ref")
+        if not isinstance(ref, str) or not ref.startswith("#/"):
+            return schema
+        cur: Any = root_schema
+        for part in ref[2:].split("/"):
+            if not isinstance(cur, dict):
+                return schema
+            cur = cur.get(part)
+        return cur if isinstance(cur, dict) else schema
+
+    def _normalize_value(
+        self,
+        value: Any,
+        schema: dict,
+        *,
+        root_schema: dict,
+        key: str | None,
+    ) -> Any:
+        schema = self._resolve_schema(schema, root_schema)
+        if isinstance(value, dict):
+            props = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+            additional = schema.get("additionalProperties")
+            for child_key, child_value in list(value.items()):
+                child_schema = props.get(child_key)
+                if child_schema is None and isinstance(additional, dict):
+                    child_schema = additional
+                if isinstance(child_schema, dict):
+                    value[child_key] = self._normalize_value(
+                        child_value,
+                        child_schema,
+                        root_schema=root_schema,
+                        key=child_key,
+                    )
+            return value
+        if isinstance(value, list):
+            item_schema = schema.get("items")
+            if isinstance(item_schema, dict):
+                for idx, item in enumerate(list(value)):
+                    value[idx] = self._normalize_value(
+                        item,
+                        item_schema,
+                        root_schema=root_schema,
+                        key=key,
+                    )
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            minimum = schema.get("minimum")
+            maximum = schema.get("maximum")
+            if isinstance(minimum, (int, float)) and value < minimum:
+                if key in {"population_total", "max_child_cohorts"}:
+                    value = abs(value)
+                value = max(value, minimum)
+            if isinstance(maximum, (int, float)) and value > maximum:
+                value = maximum
+            return value
+        return value

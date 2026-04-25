@@ -13,52 +13,16 @@ import { ZepSettingsCard, type ZepSettings } from '@/components/zep/ZepSettingsC
 import { MappingsTable, type ZepMapping } from '@/components/zep/MappingsTable';
 import { IngestionStatusCard } from '@/components/zep/IngestionStatusCard';
 import { CycleWarmingCard } from '@/components/zep/CycleWarmingCard';
-import { ZepDocsCard } from '@/components/zep/ZepDocsCard';
-import { ZepGraphPreview } from '@/components/zep/ZepGraphPreview';
+import { usePatchZep, useZepStatus } from '@/lib/api/integrations';
 
-/* ─── Mock data ───────────────────────────────────────────────────── */
-
-const MOCK_MAPPINGS: ZepMapping[] = [
-  {
-    universeId: 'univ_abc123def456',
-    cohortLabel: 'Gig Workers (C1)',
-    zepUserId: 'wf-cohort-c1-abc123',
-    zepSessionId: 'wf-session-univ-abc123',
-    status: 'synced',
-    lastSync: '2 min ago',
-  },
-  {
-    universeId: 'univ_abc123def456',
-    cohortLabel: 'Platform Mgmt (C2)',
-    zepUserId: 'wf-cohort-c2-abc123',
-    zepSessionId: 'wf-session-univ-abc123',
-    status: 'synced',
-    lastSync: '2 min ago',
-  },
-  {
-    universeId: 'univ_abc123def456',
-    cohortLabel: 'Hero: Maria Chen',
-    zepUserId: 'wf-hero-h1-abc123',
-    zepSessionId: 'wf-session-hero-h1',
-    status: 'pending',
-    lastSync: '15 min ago',
-  },
-  {
-    universeId: 'univ_xyz789ghi012',
-    cohortLabel: 'Regulators (C3)',
-    zepUserId: 'wf-cohort-c3-xyz789',
-    zepSessionId: 'wf-session-univ-xyz789',
-    status: 'error',
-    lastSync: '1h ago',
-  },
-];
+const LOCAL_LEDGER_MAPPINGS: ZepMapping[] = [];
 
 const DEFAULT_SETTINGS: ZepSettings = {
   cacheTtl: 300,
   defaultSummaryLevel: 'standard',
   healthcheckInterval: 30,
   maxSearchResults: 20,
-  embedMode: true,
+  embedMode: false,
 };
 
 /* ─── Page ────────────────────────────────────────────────────────── */
@@ -66,14 +30,30 @@ const DEFAULT_SETTINGS: ZepSettings = {
 export default function ZepPage() {
   const [url, setUrl] = useState('https://api.getzep.com');
   const [region, setRegion] = useState('us-east-1');
-  const [memoryMode, setMemoryMode] = useState<MemoryMode>('perpetual');
+  const [memoryMode, setMemoryMode] = useState<MemoryMode>('local_ledger');
   const [settings, setSettings] = useState<ZepSettings>(DEFAULT_SETTINGS);
   const [activeTab, setActiveTab] = useState('mappings');
+  const { data: zepStatus } = useZepStatus();
+  const patchZep = usePatchZep();
 
-  function handleSave() {
-    toast.success('Zep settings saved', {
-      description: 'Changes will take effect on the next tick cycle.',
-    });
+  async function handleSave() {
+    try {
+      await patchZep.mutateAsync({
+        enabled: false,
+        mode: 'local',
+        api_key_env: 'ZEP_API_KEY',
+        cache_ttl_seconds: settings.cacheTtl,
+        payload: {
+          region,
+          url,
+          memory_mode: 'local_ledger',
+          zep_enabled: false,
+        },
+      });
+      toast.success('Local ledger memory saved.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save memory settings.');
+    }
   }
 
   return (
@@ -83,13 +63,17 @@ export default function ZepPage() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Zep Memory Integration</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Configure Zep Cloud for cohort and hero memory persistence across simulation ticks.
+            Zep is disabled for this deployment. WorldFork is using local ledger summaries.
           </p>
         </div>
-        <Button onClick={handleSave}>
+        <Button onClick={handleSave} disabled={patchZep.isPending}>
           <Save className="h-4 w-4 mr-2" />
-          Save and refresh
+          Save local mode
         </Button>
+      </div>
+
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+        Memory mode: {zepStatus?.mode ?? 'local'}; Zep enabled: {String(zepStatus?.enabled ?? false)}.
       </div>
 
       {/* Top cards row */}
@@ -99,8 +83,9 @@ export default function ZepPage() {
           onUrlChange={setUrl}
           region={region}
           onRegionChange={setRegion}
+          disabledMode
         />
-        <ZepMemoryMapCard mode={memoryMode} onModeChange={setMemoryMode} />
+        <ZepMemoryMapCard mode={memoryMode} onModeChange={setMemoryMode} disabled />
         <ZepSettingsCard settings={settings} onChange={setSettings} />
       </div>
 
@@ -122,18 +107,18 @@ export default function ZepPage() {
               <div>
                 <h2 className="text-sm font-medium mb-1">Cohort / Hero Mapping</h2>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Each cohort and hero in a universe maps to a Zep user and session for persistent memory.
+                  Zep mapping is intentionally empty. Cohort and hero summaries stay in local run ledgers.
                 </p>
                 <MappingsTable
-                  data={MOCK_MAPPINGS}
-                  onResync={(id) => toast.info(`Re-sync queued for ${id.slice(0, 12)}…`)}
+                  data={LOCAL_LEDGER_MAPPINGS}
+                  onResync={(id) => toast.info(`Local memory refresh requested for ${id.slice(0, 12)}...`)}
                 />
               </div>
             </div>
 
             {/* Right column */}
             <div className="space-y-4">
-              <IngestionStatusCard />
+              <IngestionStatusCard queueDepth={0} lastSync="Disabled" successRate={0} />
               <CycleWarmingCard />
             </div>
           </div>
@@ -142,17 +127,18 @@ export default function ZepPage() {
         {/* Threads tab */}
         <TabsContent value="threads" className="mt-6">
           <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
-            Thread detail view — select a mapping to inspect its Zep thread messages.
+            Zep thread storage is disabled. Use review artifacts and tick ledgers for memory inspection.
           </div>
         </TabsContent>
 
         {/* Graph tab */}
         <TabsContent value="graph" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ZepGraphPreview />
+            <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
+              Zep graph sync is disabled for this deployment.
+            </div>
             <div className="space-y-4">
-              <IngestionStatusCard queueDepth={5} lastSync="30s ago" successRate={99.1} />
-              <ZepDocsCard />
+              <IngestionStatusCard queueDepth={0} lastSync="Disabled" successRate={0} />
             </div>
           </div>
         </TabsContent>
@@ -160,14 +146,14 @@ export default function ZepPage() {
         {/* Search tab */}
         <TabsContent value="search" className="mt-6">
           <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
-            Semantic search across Zep knowledge graph — enter a query to retrieve relevant memories.
+            Semantic Zep search is unavailable while local ledger memory is active.
           </div>
         </TabsContent>
 
         {/* History tab */}
         <TabsContent value="history" className="mt-6">
           <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
-            Sync history log — timestamps, durations, and results for all Zep sync operations.
+            No Zep sync history is produced while Zep is disabled.
           </div>
         </TabsContent>
       </Tabs>
@@ -180,42 +166,17 @@ export default function ZepPage() {
         <div className="flex items-start gap-3 rounded-lg border border-brand-200 bg-brand-50 dark:bg-brand-950/20 dark:border-brand-800 p-4">
           <AlertCircle className="h-4 w-4 text-brand-600 dark:text-brand-400 flex-shrink-0 mt-0.5" />
           <div className="text-xs text-brand-800 dark:text-brand-300 space-y-1">
-            <p className="font-medium">Zep memory is live during simulation</p>
+            <p className="font-medium">Local ledger memory is live during simulation</p>
             <p>
-              When enabled, each cohort tick writes to Zep automatically. If Zep becomes
-              unavailable, WorldFork falls back to local ledger summaries and queues a re-sync.
+              Cohort and hero memory summaries are stored in run artifacts. Zep calls remain
+              disabled unless ZEP_ENABLED is explicitly set true with a configured key.
             </p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <a
-                href="https://help.getzep.com/overview"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2 hover:text-brand-900 dark:hover:text-brand-200"
-              >
-                Zep Docs
-              </a>
-              <a
-                href="https://help.getzep.com/graph-overview"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2 hover:text-brand-900 dark:hover:text-brand-200"
-              >
-                Graph Overview
-              </a>
-              <a
-                href="https://github.com/getzep/graphiti"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-2 hover:text-brand-900 dark:hover:text-brand-200"
-              >
-                Graphiti
-              </a>
-            </div>
           </div>
         </div>
 
-        {/* Docs card */}
-        <ZepDocsCard />
+        <div className="rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground">
+          Zep remains an optional integration surface. This local deploy keeps it off and routes memory through run artifacts.
+        </div>
       </div>
     </div>
   );

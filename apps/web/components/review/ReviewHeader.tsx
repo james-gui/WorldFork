@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { LogOut, RefreshCcw } from 'lucide-react';
+import { GitFork, LogOut, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import { ForceDeviationDialog } from '@/components/branching/ForceDeviationDialog';
 
 interface ReviewHeaderProps {
   runId: string;
@@ -53,7 +54,7 @@ export function ReviewHeader({
 
         <div className="flex-1 min-w-0 max-w-xl">
           <Slider
-            min={1}
+            min={0}
             max={maxTick}
             step={1}
             value={[currentTick]}
@@ -77,6 +78,16 @@ export function ReviewHeader({
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </button>
+          <ForceDeviationDialog
+            universeId={universeId}
+            tick={currentTick}
+            trigger={
+              <Button type="button" variant="outline" size="sm" className="gap-1.5">
+                <GitFork className="h-3.5 w-3.5" />
+                Force Deviation
+              </Button>
+            }
+          />
         </div>
       </div>
     </div>

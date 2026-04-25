@@ -5,7 +5,7 @@ import { Virtuoso } from 'react-virtuoso';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { MultiverseEvent } from '@/lib/mocks/multiverse';
+import type { MultiverseEvent } from '@/lib/multiverse/types';
 import { useMultiverseUIStore } from '@/lib/state/multiverseUiStore';
 
 interface MultiverseLiveFeedProps {

@@ -1,12 +1,11 @@
-"""Anthropic provider — stub adapter.
+"""Anthropic provider — direct adapter intentionally disabled.
 
 Anthropic's SDK shape is different (Messages API; system prompt is a top-level
 field, not the first message). For B2-B we expose the Protocol surface and
 delegate to OpenRouter when the user has the OpenRouter key — most teams will
 just route Anthropic models through OpenRouter (`anthropic/claude-3-5-sonnet`).
 
-TODO B5+: implement native AsyncAnthropic + tool-calling shape if a user
-requests direct Anthropic billing.
+This deployment routes all Anthropic-family model IDs through OpenRouter.
 """
 from __future__ import annotations
 
@@ -25,7 +24,7 @@ from backend.app.schemas.llm import (
 
 
 class AnthropicProvider(BaseProvider):
-    """Stub direct-Anthropic adapter."""
+    """Direct Anthropic adapter that reports unavailable unless explicitly implemented."""
 
     name = "anthropic"
 
@@ -68,7 +67,7 @@ class AnthropicProvider(BaseProvider):
             provider=self.name,
             ok=False,
             latency_ms=0,
-            details={"note": "AnthropicProvider is a stub; route via OpenRouter for now."},
+            details={"note": "Route Anthropic models through OpenRouter for this deployment."},
         )
 
     @staticmethod

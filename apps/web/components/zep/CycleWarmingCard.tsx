@@ -15,10 +15,9 @@ interface CycleWarmingCardProps {
 
 const DEFAULT_STEPS: WarmingStep[] = [
   { label: 'Fetch run manifest', done: true },
-  { label: 'Ingest cohort archetypes', done: true },
-  { label: 'Build user profiles in Zep', done: true },
-  { label: 'Seed initial memory threads', done: true },
-  { label: 'Warm knowledge graph edges', done: false },
+  { label: 'Load cohort archetypes', done: true },
+  { label: 'Use local ledger summaries', done: true },
+  { label: 'Skip Zep cloud sync', done: true },
   { label: 'Index first-tick summaries', done: false },
 ];
 

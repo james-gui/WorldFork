@@ -5,7 +5,7 @@ text + optional uploaded reference docs + run config, calls the LLM through
 ``call_with_policy(job_type='initialize_big_bang', ...)`` once, validates the
 response against ``initializer_schema.json``, and persists everything to:
 
-  * The database (BigBangRun, Universe U000, archetypes, cohort_states at
+  * The database (BigBangRun, root Universe, archetypes, cohort_states at
     tick 0, hero_archetypes, hero_states at tick 0, scheduled events).
   * The run ledger (manifest, config snapshot, SoT snapshot, input docs,
     initializer prompt + raw + parsed responses, validation report).
@@ -98,6 +98,8 @@ class InitializerInput:
     max_schedule_horizon_ticks: int = 5
     provider_snapshot_id: str | None = None
     created_by_user_id: str | None = None
+    big_bang_id: str | None = None
+    root_universe_id: str | None = None
 
 
 @dataclass
@@ -154,7 +156,7 @@ def _build_config_snapshot(
         provider="openrouter",
         base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         api_key_env="OPENROUTER_API_KEY",
-        default_model=os.environ.get("DEFAULT_MODEL", "openai/gpt-4o"),
+        default_model=os.environ.get("DEFAULT_MODEL", "deepseek/deepseek-v3.2"),
         fallback_model=os.environ.get("FALLBACK_MODEL", "openai/gpt-4o-mini"),
     )
 
@@ -645,8 +647,8 @@ async def initialize_big_bang(
     u. Return InitializerResult.
     """
     # --- a. IDs ---------------------------------------------------------
-    big_bang_id = new_id("BB")
-    root_universe_id = new_id("U")
+    big_bang_id = input.big_bang_id or new_id("BB")
+    root_universe_id = input.root_universe_id or new_id("U")
 
     # --- b. SoT bundle --------------------------------------------------
     if sot is None:
@@ -674,6 +676,13 @@ async def initialize_big_bang(
     # we step up one level so we don't end up with runs/runs/.
     if run_root.name == "runs":
         run_root = run_root.parent
+
+    existing_result = await _existing_initialized_result(
+        session=session,
+        big_bang_id=big_bang_id,
+    )
+    if existing_result is not None:
+        return existing_result
 
     # --- c. Begin ledger ----------------------------------------------
     ledger = Ledger.begin_run(
@@ -1044,6 +1053,38 @@ async def initialize_big_bang(
 # ---------------------------------------------------------------------------
 
 
+async def _existing_initialized_result(
+    *,
+    session: AsyncSession,
+    big_bang_id: str,
+) -> InitializerResult | None:
+    """Return an existing completed initializer result for idempotent retries."""
+    from backend.app.models.runs import BigBangRunModel
+    from backend.app.models.universes import UniverseModel
+
+    existing_run = await session.get(BigBangRunModel, big_bang_id)
+    if existing_run is None or existing_run.status not in {"running", "completed"}:
+        return None
+    existing_root = await session.get(UniverseModel, existing_run.root_universe_id)
+    if existing_root is None:
+        return None
+    return InitializerResult(
+        big_bang_run=existing_run.to_schema(),
+        root_universe=existing_root.to_schema(),
+        archetypes=[],
+        initial_cohort_states=[],
+        heroes=[],
+        initial_hero_states=[],
+        initial_events=[],
+        channels=[],
+        run_folder=Path(existing_run.run_folder_path),
+        sot_snapshot_path=existing_run.source_of_truth_snapshot_path,
+        scenario_summary=(existing_run.scenario_text[:120].strip() + "...")
+        if len(existing_run.scenario_text) > 120
+        else existing_run.scenario_text.strip(),
+    )
+
+
 async def _persist_db_rows(
     *,
     session: AsyncSession,
@@ -1068,32 +1109,72 @@ async def _persist_db_rows(
     from backend.app.models.runs import BigBangRunModel
     from backend.app.models.universes import UniverseModel
 
-    bbr = BigBangRunModel.from_schema(big_bang)
-    session.add(bbr)
+    bbr = await session.get(BigBangRunModel, big_bang.big_bang_id)
+    if bbr is None:
+        bbr = BigBangRunModel.from_schema(big_bang)
+        session.add(bbr)
+    else:
+        existing_meta = dict(bbr.safe_edit_metadata or {})
+        new_meta = dict(big_bang.safe_edit_metadata or {})
+        bbr.display_name = big_bang.display_name
+        bbr.created_by_user_id = big_bang.created_by_user_id
+        bbr.scenario_text = big_bang.scenario_text
+        bbr.input_file_ids = list(big_bang.input_file_ids)
+        bbr.status = big_bang.status
+        bbr.time_horizon_label = big_bang.time_horizon_label
+        bbr.tick_duration_minutes = big_bang.tick_duration_minutes
+        bbr.max_ticks = big_bang.max_ticks
+        bbr.max_schedule_horizon_ticks = big_bang.max_schedule_horizon_ticks
+        bbr.source_of_truth_version = big_bang.source_of_truth_version
+        bbr.source_of_truth_snapshot_path = big_bang.source_of_truth_snapshot_path
+        bbr.provider_snapshot_id = big_bang.provider_snapshot_id
+        bbr.root_universe_id = big_bang.root_universe_id
+        bbr.run_folder_path = big_bang.run_folder_path
+        bbr.safe_edit_metadata = {**new_meta, **existing_meta}
     await session.flush()
 
-    uni = UniverseModel.from_schema(root_universe)
-    session.add(uni)
+    uni = await session.get(UniverseModel, root_universe.universe_id)
+    if uni is None:
+        session.add(UniverseModel.from_schema(root_universe))
+    else:
+        uni.big_bang_id = root_universe.big_bang_id
+        uni.parent_universe_id = root_universe.parent_universe_id
+        uni.lineage_path = list(root_universe.lineage_path)
+        uni.branch_from_tick = root_universe.branch_from_tick
+        uni.branch_depth = root_universe.branch_depth
+        uni.status = root_universe.status
+        uni.branch_reason = root_universe.branch_reason
+        uni.branch_delta = dict(root_universe.branch_delta) if root_universe.branch_delta else None
+        uni.current_tick = root_universe.current_tick
+        uni.latest_metrics = dict(root_universe.latest_metrics)
+        uni.frozen_at = root_universe.frozen_at
+        uni.killed_at = root_universe.killed_at
+        uni.completed_at = root_universe.completed_at
     await session.flush()
 
     for arch in archetypes:
-        session.add(PopulationArchetypeModel.from_schema(arch, big_bang_id=big_bang.big_bang_id))
+        if await session.get(PopulationArchetypeModel, arch.archetype_id) is None:
+            session.add(PopulationArchetypeModel.from_schema(arch, big_bang_id=big_bang.big_bang_id))
     await session.flush()
 
     for cs in cohort_states:
-        session.add(CohortStateModel.from_schema(cs))
+        if await session.get(CohortStateModel, (cs.cohort_id, cs.tick)) is None:
+            session.add(CohortStateModel.from_schema(cs))
     await session.flush()
 
     for hero in heroes:
-        session.add(HeroArchetypeModel.from_schema(hero, big_bang_id=big_bang.big_bang_id))
+        if await session.get(HeroArchetypeModel, hero.hero_id) is None:
+            session.add(HeroArchetypeModel.from_schema(hero, big_bang_id=big_bang.big_bang_id))
     await session.flush()
 
     for hs in hero_states:
-        session.add(HeroStateModel.from_schema(hs))
+        if await session.get(HeroStateModel, (hs.hero_id, hs.tick)) is None:
+            session.add(HeroStateModel.from_schema(hs))
     await session.flush()
 
     for ev in events:
-        session.add(EventModel.from_schema(ev))
+        if await session.get(EventModel, ev.event_id) is None:
+            session.add(EventModel.from_schema(ev))
     await session.flush()
 
 

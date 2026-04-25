@@ -7,8 +7,7 @@ interface SessionFilesTabProps {
   run: Run;
 }
 
-// Placeholder canonical run-ledger file tree structure per §19
-const buildPlaceholderTree = (runId: string): FileNode[] => [
+const buildLedgerTree = (rootUniverseId: string, currentTick: number): FileNode[] => [
   {
     name: 'config/',
     type: 'dir',
@@ -36,21 +35,19 @@ const buildPlaceholderTree = (runId: string): FileNode[] => [
     type: 'dir',
     children: [
       {
-        name: 'U000/',
+        name: `${rootUniverseId}/`,
         type: 'dir',
         children: [
           {
             name: 'ticks/',
             type: 'dir',
             children: [
-              { name: 'T001/', type: 'dir', children: [
+              { name: currentTick > 0 ? `T${String(currentTick).padStart(3, '0')}/` : 'pending/', type: 'dir', children: [
                 { name: 'cohort_packets.jsonl', type: 'file' },
                 { name: 'hero_packets.jsonl', type: 'file' },
                 { name: 'llm_calls/', type: 'dir', children: [] },
                 { name: 'state_snapshot.json', type: 'file' },
               ]},
-              { name: 'T002/', type: 'dir', children: [] },
-              { name: '... T024/', type: 'dir', children: [] },
             ],
           },
           { name: 'actors/', type: 'dir', children: [
@@ -64,14 +61,6 @@ const buildPlaceholderTree = (runId: string): FileNode[] => [
           ]},
         ],
       },
-      {
-        name: 'U001/',
-        type: 'dir',
-        children: [
-          { name: 'ticks/', type: 'dir', children: [] },
-          { name: 'actors/', type: 'dir', children: [] },
-        ],
-      },
     ],
   },
   { name: 'manifest.json', type: 'file' },
@@ -79,7 +68,7 @@ const buildPlaceholderTree = (runId: string): FileNode[] => [
 ];
 
 export function SessionFilesTab({ run }: SessionFilesTabProps) {
-  const tree = buildPlaceholderTree(run.id);
+  const tree = buildLedgerTree(run.root_universe_id ?? run.big_bang_id, run.current_tick);
 
   return (
     <Card>

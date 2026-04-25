@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { KpiSparkline } from './KpiSparkline';
 import { DominantEmotionDonut } from './DominantEmotionDonut';
-import type { SparkPoint } from '@/lib/mocks/dashboard';
+import type { SparkPoint } from '@/lib/dashboard/types';
 
 interface KpiCardProps {
   title: string;

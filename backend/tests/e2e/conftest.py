@@ -474,7 +474,7 @@ def mock_provider_response():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def captured_enqueues(monkeypatch):
     """Replace `enqueue` in scheduler / branch_engine with a capture stub.
 
@@ -490,6 +490,18 @@ def captured_enqueues(monkeypatch):
     from backend.app.workers import scheduler as sched
 
     monkeypatch.setattr(sched, "enqueue", _fake_enqueue)
+    try:
+        import backend.app.api.runs as runs_api
+
+        monkeypatch.setattr(runs_api, "enqueue", _fake_enqueue)
+    except ImportError:
+        pass
+    try:
+        import backend.app.api.universes as universes_api
+
+        monkeypatch.setattr(universes_api, "enqueue", _fake_enqueue)
+    except ImportError:
+        pass
 
     yield captured
 

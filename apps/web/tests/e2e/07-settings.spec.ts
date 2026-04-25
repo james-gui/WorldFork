@@ -16,18 +16,15 @@ test('settings main page renders 8 section cards', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
 });
 
-test('integrations page renders 5 provider cards', async ({ page }) => {
+test('integrations page renders OpenRouter and local-memory state', async ({ page }) => {
   await page.goto('/settings/integrations');
 
   await expect(page.getByRole('heading', { name: 'Integrations & API Providers' })).toBeVisible();
 
-  // 5 providers: OpenRouter, OpenAI, Anthropic, Ollama, Zep
-  // Use first() to avoid strict mode if text appears multiple times
+  // This deployment is OpenRouter-only; Zep remains disabled in favor of local ledger memory.
   await expect(page.getByText('OpenRouter').first()).toBeVisible();
-  await expect(page.getByText('OpenAI').first()).toBeVisible();
-  await expect(page.getByText('Anthropic').first()).toBeVisible();
-  await expect(page.getByText('Ollama').first()).toBeVisible();
-  await expect(page.getByText('Zep').first()).toBeVisible();
+  await expect(page.getByText('Local Ledger Memory')).toBeVisible();
+  await expect(page.getByText('Zep is disabled for this deployment.')).toBeVisible();
 });
 
 test('routing settings page renders policy table with rows', async ({ page }) => {

@@ -15,7 +15,7 @@ import {
   EMOTIONS,
   EMOTION_COLORS,
   type EmotionTrendPoint,
-} from '@/lib/mocks/dashboard';
+} from '@/lib/dashboard/types';
 
 interface EmotionTrendChartProps {
   data: EmotionTrendPoint[];

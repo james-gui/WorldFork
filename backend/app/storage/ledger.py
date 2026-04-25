@@ -145,6 +145,7 @@ class Ledger:
                 ledger = cls(run_root, big_bang_id)
                 ledger._run_folder = candidate
                 ledger._manifest = mf
+                ledger._hydrate_file_cache_from_tick_manifests()
                 return ledger
         raise LedgerError(
             f"No run folder found for big_bang_id={big_bang_id!r} under {runs_dir}"
@@ -388,6 +389,30 @@ class Ledger:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _hydrate_file_cache_from_tick_manifests(self) -> None:
+        """Rebuild the file checksum cache from sealed tick manifests on disk."""
+        self._file_cache.clear()
+        universes_root = self.run_folder / "universes"
+        if not universes_root.exists():
+            return
+        for manifest_path in sorted(universes_root.glob("*/ticks/tick_*/manifest.json")):
+            try:
+                manifest = json.loads(manifest_path.read_bytes())
+            except Exception:
+                continue
+            files = manifest.get("files")
+            if not isinstance(files, dict):
+                continue
+            sealed_at = manifest.get("sealed_at")
+            for rel_path, record in files.items():
+                if not isinstance(rel_path, str) or not isinstance(record, dict):
+                    continue
+                self._file_cache[rel_path] = {
+                    "size": record.get("size"),
+                    "sha256": record.get("sha256"),
+                    "sealed_at": sealed_at,
+                }
 
     def _atomic_write(self, target: Path, data: bytes, *, immutable: bool) -> str:
         """Write *data* to *target* atomically; chmod 0o444 if *immutable*."""

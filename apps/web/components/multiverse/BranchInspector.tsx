@@ -10,11 +10,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ChevronRight,
   GitCompare,
+  GitFork,
   Snowflake,
   Skull,
   Repeat,
   Loader2,
 } from 'lucide-react';
+import { ForceDeviationDialog } from '@/components/branching/ForceDeviationDialog';
 import { Virtuoso } from 'react-virtuoso';
 import { JsonViewer } from '@/components/code/JsonViewer';
 import { cn } from '@/lib/utils';
@@ -24,7 +26,7 @@ import {
   triggerLabel,
   type MultiverseEvent,
   type MultiverseTreePayload,
-} from '@/lib/mocks/multiverse';
+} from '@/lib/multiverse/types';
 import {
   useFreezeUniverse,
   useKillUniverse,
@@ -197,6 +199,16 @@ export function BranchInspector({ tree }: BranchInspectorProps) {
             )}
             Replay
           </Button>
+          <ForceDeviationDialog
+            universeId={node.id}
+            tick={node.current_tick}
+            trigger={
+              <Button variant="outline" size="sm" className="col-span-2">
+                <GitFork className="mr-1.5 h-3.5 w-3.5" />
+                Force Deviation
+              </Button>
+            }
+          />
         </div>
       </div>
     </Card>

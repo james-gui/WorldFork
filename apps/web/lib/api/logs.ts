@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './client';
 import type {
   RequestLogItem,
@@ -29,6 +29,7 @@ export function useLogs(opts?: {
   if (opts?.provider) params.set('provider', opts.provider);
   if (opts?.status) params.set('status', opts.status);
   if (opts?.runId) params.set('run_id', opts.runId);
+  if (opts?.universeId) params.set('universe_id', opts.universeId);
   if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
   if (opts?.offset !== undefined) params.set('offset', String(opts.offset));
   const qs = params.toString();
@@ -97,7 +98,6 @@ export function useAuditLogs(opts?: { limit?: number; offset?: number }) {
 
   return useQuery<AuditLogItem[]>({
     queryKey: ['auditLogs', opts],
-    // TODO(B11-A): audit table pending; returns empty list from backend for now
     queryFn: () => apiFetch<AuditLogItem[]>(`/api/logs/audit${qs ? `?${qs}` : ''}`),
   });
 }
@@ -119,23 +119,31 @@ export function useTrace(traceId?: string) {
 // ---------------------------------------------------------------------------
 
 export function useTestWebhook() {
+  const qc = useQueryClient();
   return useMutation<WebhookTestResponse, Error, WebhookTestRequest>({
     mutationFn: (payload) =>
-      apiFetch<WebhookTestResponse>('/api/integrations/webhooks/test', {
+      apiFetch<WebhookTestResponse>('/api/webhooks/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['webhookLogs'] });
+    },
   });
 }
 
 export function useReplayWebhook() {
+  const qc = useQueryClient();
   return useMutation<WebhookTestResponse, Error, WebhookReplayRequest>({
     mutationFn: (payload) =>
-      apiFetch<WebhookTestResponse>('/api/integrations/webhooks/replay', {
+      apiFetch<WebhookTestResponse>('/api/webhooks/replay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['webhookLogs'] });
+    },
   });
 }

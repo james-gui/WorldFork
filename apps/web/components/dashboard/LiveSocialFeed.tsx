@@ -4,10 +4,10 @@ import * as React from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { Card } from '@/components/ui/card';
 import { PostCard } from './PostCard';
-import type { MockPost } from '@/lib/mocks/dashboard';
+import type { SocialPost } from '@/lib/dashboard/types';
 
 interface LiveSocialFeedProps {
-  posts: MockPost[];
+  posts: SocialPost[];
   height?: number;
 }
 

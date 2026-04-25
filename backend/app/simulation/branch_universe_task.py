@@ -36,6 +36,7 @@ async def run_branch_universe(
     policy_decision: str = "approve",
     cost_estimate: dict | None = None,
     ledger: Ledger | None = None,
+    enqueue_first_tick: bool = True,
 ) -> BranchCommitResult:
     """Re-hydrate inputs from a branch_universe envelope and commit the branch.
 
@@ -85,6 +86,7 @@ async def run_branch_universe(
         branch_reason=reason,
         policy_result=policy_result,
         ledger=ledger,
+        enqueue_first_tick=enqueue_first_tick,
     )
 
 

@@ -42,6 +42,10 @@ class CreateRunResponse(BaseModel):
     run_id: str
     root_universe_id: str
     status: str
+    job_id: str | None = None
+    enqueued: bool = False
+    degraded: bool = False
+    error: str | None = None
 
 
 class RunListItem(BaseModel):
@@ -59,6 +63,8 @@ class RunListItem(BaseModel):
     favorite: bool = False
     archived: bool = False
     root_universe_id: str
+    active_universe_count: int = 0
+    total_universe_count: int = 0
 
 
 class RunListResponse(BaseModel):
@@ -106,6 +112,36 @@ class PatchRunRequest(BaseModel):
     archived: bool | None = None
 
 
+class RunResultsResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    run_id: str
+    status: str
+    generated_at: datetime | None = None
+    provider: str | None = None
+    model_used: str | None = None
+    summary: str | None = None
+    classifications: dict[str, Any] = Field(default_factory=dict)
+    branch_clusters: list[dict[str, Any]] = Field(default_factory=list)
+    universe_outcomes: list[dict[str, Any]] = Field(default_factory=list)
+    timeline_highlights: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    artifact_path: str | None = None
+    error: str | None = None
+    job_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RunResultsRegenerateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    job_id: str
+    status: str
+    enqueued: bool = True
+
+
 # ---------------------------------------------------------------------------
 # ── Universes §20.2 ─────────────────────────────────────────────────────────
 # ---------------------------------------------------------------------------
@@ -137,8 +173,8 @@ class UniverseDetail(BaseModel):
 class BranchPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # BranchDelta discriminated union — accept arbitrary dict for now;
-    # validated against branching.delta once B4-A is merged.
+    # BranchDelta discriminated union payload; API handlers validate it through
+    # backend.app.schemas.branching before previewing or committing a branch.
     delta: dict[str, Any] = Field(default_factory=dict)
     reason: str = ""
 
@@ -146,12 +182,12 @@ class BranchPreviewRequest(BaseModel):
 class BranchPreviewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # B4-A placeholder — returns a stub approval result.
+    # Branch policy result from the database-backed evaluator.
     approved: bool = True
     downgraded: bool = False
     rejection_reason: str | None = None
     policy_checks: list[dict[str, Any]] = Field(default_factory=list)
-    note: str = "Branch policy engine (B4-A) not yet integrated — placeholder result."
+    note: str = "Branch policy evaluated."
 
 
 class BranchRequest(BaseModel):
@@ -166,7 +202,7 @@ class BranchResponse(BaseModel):
 
     candidate_universe_id: str
     job_id: str
-    note: str = "Branch engine (B4-B) not yet integrated — placeholder universe id."
+    note: str = "Branch committed."
 
 
 class StepRequest(BaseModel):
@@ -209,6 +245,73 @@ class TickArtifactResponse(BaseModel):
     state_after: dict[str, Any] = Field(default_factory=dict)
     god_decision: dict[str, Any] | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
+    prompt_summary: dict[str, Any] = Field(default_factory=dict)
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    emotion_trends: list[dict[str, float]] = Field(default_factory=list)
+
+
+class TickTraceActor(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    actor_id: str
+    actor_kind: str
+    call_id: str | None = None
+    provider: str | None = None
+    model_used: str | None = None
+    job_type: str | None = None
+    prompt_packet: dict[str, Any] | None = None
+    visible_feed: list[dict[str, Any]] = Field(default_factory=list)
+    visible_events: list[dict[str, Any]] = Field(default_factory=list)
+    retrieved_memory: dict[str, Any] | None = None
+    raw_response: dict[str, Any] | str | None = None
+    parsed_json: dict[str, Any] | None = None
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    rationale: dict[str, Any] | str | None = None
+    self_ratings: dict[str, Any] = Field(default_factory=dict)
+    state_before: dict[str, Any] | None = None
+    state_after: dict[str, Any] | None = None
+    state_delta: dict[str, Any] = Field(default_factory=dict)
+
+
+class TickTraceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    universe_id: str
+    tick: int
+    include_raw: bool = False
+    actors: list[TickTraceActor] = Field(default_factory=list)
+    state_before: dict[str, Any] = Field(default_factory=dict)
+    state_after: dict[str, Any] = Field(default_factory=dict)
+    god_decision: dict[str, Any] | None = None
+    redactions_applied: bool = True
+    missing_artifacts: list[str] = Field(default_factory=list)
+
+
+class ForceDeviationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tick: int = Field(..., ge=0)
+    mode: str = Field(pattern="^(god_prompt|structured_delta)$")
+    prompt: str | None = None
+    delta: dict[str, Any] | None = None
+    reason: str = ""
+    auto_start: bool = True
+
+
+class ForceDeviationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    parent_universe_id: str
+    child_universe_id: str | None = None
+    tick: int
+    mode: str
+    job_id: str
+    status: str
+    enqueued: bool = False
+    generated_delta: dict[str, Any] | None = None
+    audit_artifact_path: str | None = None
+    note: str = "Forced deviation committed."
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +330,10 @@ class MultiverseTreeNode(BaseModel):
     current_tick: int
     latest_metrics: dict[str, Any] = Field(default_factory=dict)
     branch_reason: str = ""
+    branch_delta: dict[str, Any] = Field(default_factory=dict)
+    lineage_path: list[str] = Field(default_factory=list)
     descendant_count: int = 0
+    created_at: datetime | None = None
 
 
 class MultiverseEdge(BaseModel):
@@ -264,6 +370,9 @@ class MultiverseMetricsResponse(BaseModel):
     max_depth: int
     candidate_branches: int
     branch_budget_pct: float = 0.0
+    branch_budget_used: int = 0
+    branch_budget_limit: int = 0
+    active_branches_per_tick: float = 0.0
 
 
 class PruneRequest(BaseModel):
@@ -536,6 +645,7 @@ class QueueInfo(BaseModel):
     active_task_count: int
     reserved_count: int
     scheduled_count: int
+    paused: bool = False
 
 
 class QueuesResponse(BaseModel):

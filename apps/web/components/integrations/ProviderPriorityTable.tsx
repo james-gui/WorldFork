@@ -19,25 +19,18 @@ import {
 } from '@/components/ui/table';
 import { GripVertical } from 'lucide-react';
 
-interface ProviderRow {
+export interface ProviderPriorityRow {
   id: string;
   name: string;
   status: 'connected' | 'disconnected' | 'error';
-  latency: string;
+  latencyMs?: number | null;
   rpm: number;
   tpm: number;
-  dailyCap: number;
+  dailyCap?: number | null;
   priority: number;
   enabled: boolean;
+  readonly?: boolean;
 }
-
-const STUB_ROWS: ProviderRow[] = [
-  { id: 'openrouter', name: 'OpenRouter', status: 'connected', latency: '480ms', rpm: 500, tpm: 200000, dailyCap: 5000000, priority: 1, enabled: true },
-  { id: 'openai', name: 'OpenAI', status: 'disconnected', latency: '—', rpm: 0, tpm: 0, dailyCap: 0, priority: 2, enabled: false },
-  { id: 'anthropic', name: 'Anthropic', status: 'disconnected', latency: '—', rpm: 0, tpm: 0, dailyCap: 0, priority: 3, enabled: false },
-  { id: 'ollama', name: 'Ollama', status: 'disconnected', latency: '—', rpm: 0, tpm: 0, dailyCap: 0, priority: 4, enabled: false },
-  { id: 'zep', name: 'Zep', status: 'connected', latency: '120ms', rpm: 1000, tpm: 0, dailyCap: 0, priority: 5, enabled: true },
-];
 
 const STATUS_COLORS: Record<string, string> = {
   connected: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -45,64 +38,76 @@ const STATUS_COLORS: Record<string, string> = {
   error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
-const col = createColumnHelper<ProviderRow>();
+const col = createColumnHelper<ProviderPriorityRow>();
 
-export function ProviderPriorityTable() {
-  const [data, setData] = React.useState<ProviderRow[]>(STUB_ROWS);
+function formatNumber(value: number | null | undefined) {
+  return value ? value.toLocaleString() : '0';
+}
 
-  const toggleEnabled = (id: string) => {
-    setData((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
-    );
-  };
-
-  const columns = [
-    col.display({
-      id: 'drag',
-      header: '',
-      cell: () => (
-        <span className="cursor-grab text-muted-foreground">
-          <GripVertical className="h-4 w-4" />
-        </span>
-      ),
-      size: 32,
-    }),
-    col.accessor('name', { header: 'Provider' }),
-    col.accessor('status', {
-      header: 'Status',
-      cell: (info) => (
-        <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[info.getValue()]}`}>
-          {info.getValue()}
-        </Badge>
-      ),
-    }),
-    col.accessor('latency', { header: 'Latency' }),
-    col.accessor('rpm', {
-      header: 'RPM',
-      cell: (info) => info.getValue().toLocaleString(),
-    }),
-    col.accessor('tpm', {
-      header: 'TPM',
-      cell: (info) => info.getValue().toLocaleString(),
-    }),
-    col.accessor('dailyCap', {
-      header: 'Daily Cap',
-      cell: (info) => (info.getValue() ? info.getValue().toLocaleString() : '—'),
-    }),
-    col.accessor('priority', { header: 'Priority' }),
-    col.accessor('enabled', {
-      header: 'Enabled',
-      cell: (info) => (
-        <Switch
-          checked={info.getValue()}
-          onCheckedChange={() => toggleEnabled(info.row.original.id)}
-        />
-      ),
-    }),
-  ];
+export function ProviderPriorityTable({
+  rows,
+  onEnabledChange,
+}: {
+  rows: ProviderPriorityRow[];
+  onEnabledChange?: (providerId: string, enabled: boolean) => void;
+}) {
+  const columns = React.useMemo(
+    () => [
+      col.display({
+        id: 'drag',
+        header: '',
+        cell: () => (
+          <span className="cursor-grab text-muted-foreground">
+            <GripVertical className="h-4 w-4" />
+          </span>
+        ),
+        size: 32,
+      }),
+      col.accessor('name', { header: 'Provider' }),
+      col.accessor('status', {
+        header: 'Status',
+        cell: (info) => (
+          <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[info.getValue()]}`}>
+            {info.getValue()}
+          </Badge>
+        ),
+      }),
+      col.accessor('latencyMs', {
+        header: 'Latency',
+        cell: (info) => {
+          const value = info.getValue();
+          return value === null || value === undefined ? 'Not tested' : `${value}ms`;
+        },
+      }),
+      col.accessor('rpm', {
+        header: 'RPM',
+        cell: (info) => formatNumber(info.getValue()),
+      }),
+      col.accessor('tpm', {
+        header: 'TPM',
+        cell: (info) => formatNumber(info.getValue()),
+      }),
+      col.accessor('dailyCap', {
+        header: 'Daily Cap',
+        cell: (info) => (info.getValue() ? `$${info.getValue()!.toLocaleString()}` : 'None'),
+      }),
+      col.accessor('priority', { header: 'Priority' }),
+      col.accessor('enabled', {
+        header: 'Enabled',
+        cell: (info) => (
+          <Switch
+            checked={info.getValue()}
+            disabled={info.row.original.readonly || !onEnabledChange}
+            onCheckedChange={(checked) => onEnabledChange?.(info.row.original.id, checked)}
+          />
+        ),
+      }),
+    ],
+    [onEnabledChange],
+  );
 
   const table = useReactTable({
-    data,
+    data: rows,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
@@ -131,6 +136,13 @@ export function ProviderPriorityTable() {
               ))}
             </TableRow>
           ))}
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="text-xs text-muted-foreground py-6 text-center">
+                No provider settings returned by the API.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>

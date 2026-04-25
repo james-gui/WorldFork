@@ -10,6 +10,8 @@ import type {
   RunListResponse,
   RunDetail,
   PatchRunRequest,
+  RunResultsRegenerateResponse,
+  RunResultsResponse,
   SoTBundleResponse,
 } from './types';
 
@@ -18,7 +20,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const STATUS_MAP: Record<string, RunStatus> = {
-  draft: 'running',
+  draft: 'paused',
   initializing: 'running',
   active: 'running',
   running: 'running',
@@ -29,14 +31,16 @@ const STATUS_MAP: Record<string, RunStatus> = {
 };
 
 function adaptRunListItemToRow(item: RunListItem): RunRow {
+  const archived = item.archived === true || item.status === 'archived';
   return {
     id: item.run_id,
     name: item.display_name,
-    bigBangId: item.root_universe_id,
+    bigBangId: item.run_id,
+    rootUniverseId: item.root_universe_id,
     createdAt: item.created_at,
     durationSeconds: 0,
-    universeCount: 0,
-    status: STATUS_MAP[item.status] ?? 'running',
+    universeCount: item.total_universe_count ?? 0,
+    status: archived ? 'archived' : STATUS_MAP[item.status] ?? 'running',
     provider: '',
     tags: [],
     scenarioType: item.time_horizon_label ?? '',
@@ -102,9 +106,29 @@ export function useRun(runId?: string) {
 export function useRunSourceOfTruth(runId?: string) {
   return useQuery<SoTBundleResponse | null>({
     queryKey: ['runSourceOfTruth', runId],
-    queryFn: () => apiFetch<SoTBundleResponse>(`/api/runs/${runId}/source-of-truth`),
+    queryFn: async () => {
+      try {
+        return await apiFetch<SoTBundleResponse>(`/api/runs/${runId}/source-of-truth`);
+      } catch (err: unknown) {
+        const status = (err as { status?: number })?.status;
+        if (status === 404) return null;
+        throw err;
+      }
+    },
     enabled: !!runId,
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useRunResults(runId?: string) {
+  return useQuery<RunResultsResponse | null>({
+    queryKey: ['runResults', runId],
+    queryFn: () => apiFetch<RunResultsResponse>(`/api/runs/${runId}/results`),
+    enabled: !!runId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'pending' || status === 'running' ? 3000 : false;
+    },
   });
 }
 
@@ -118,6 +142,15 @@ export interface CreateRunPayload extends Partial<CreateRunRequest> {
   // Wizard-specific fields (ignored by the API, present in form values):
   [key: string]: unknown;
 }
+
+const TICK_DURATION_MINUTES: Record<string, number> = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+  '1h': 60,
+  '4h': 240,
+  '1d': 1440,
+};
 
 export function useCreateRun() {
   const qc = useQueryClient();
@@ -146,7 +179,9 @@ export function useCreateRun() {
         tick_duration_minutes:
           typeof payload.tick_duration_minutes === 'number'
             ? payload.tick_duration_minutes
-            : 1440,
+            : typeof (payload as Record<string, unknown>).tickDuration === 'string'
+              ? TICK_DURATION_MINUTES[String((payload as Record<string, unknown>).tickDuration)] ?? 1440
+              : 1440,
         max_ticks:
           typeof payload.max_ticks === 'number'
             ? payload.max_ticks
@@ -218,5 +253,19 @@ export function useExportRun() {
   return useMutation<{ job_id: string; status: string }, Error, string>({
     mutationFn: (runId) =>
       apiFetch(`/api/runs/${runId}/export`, { method: 'POST' }),
+  });
+}
+
+export function useRegenerateRunResults() {
+  const qc = useQueryClient();
+  return useMutation<RunResultsRegenerateResponse, Error, string>({
+    mutationFn: (runId) =>
+      apiFetch<RunResultsRegenerateResponse>(`/api/runs/${runId}/results/regenerate`, {
+        method: 'POST',
+      }),
+    onSuccess: (_data, runId) => {
+      qc.invalidateQueries({ queryKey: ['runResults', runId] });
+      qc.invalidateQueries({ queryKey: ['jobs'] });
+    },
   });
 }

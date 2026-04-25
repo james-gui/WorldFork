@@ -1,97 +1,208 @@
 'use client';
 
 import * as React from 'react';
-import { useForm, FormProvider, useFormContext } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { Save } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
-import {
-  FormControl,
-  FormField,
-  FormItem,
-} from '@/components/ui/form';
+import { Switch } from '@/components/ui/switch';
+import { usePatchRateLimits, useRateLimits } from '@/lib/api/settings';
+import type { RateLimitResponse } from '@/lib/api/types';
 
-const schema = z.object({
-  usePrivateFeed: z.boolean().default(false),
-  autoFallback: z.boolean().default(true),
-  suspendedFallback: z.boolean().default(true),
-  branchReservedCapacity: z.number().min(0).max(100).default(20),
-  healthCheckEnabled: z.boolean().default(true),
-  autoReloadSettings: z.boolean().default(false),
-});
+type RateLimitRow = Pick<
+  RateLimitResponse,
+  | 'provider'
+  | 'enabled'
+  | 'rpm_limit'
+  | 'tpm_limit'
+  | 'max_concurrency'
+  | 'burst_multiplier'
+  | 'retry_policy'
+  | 'jitter'
+  | 'daily_budget_usd'
+  | 'branch_reserved_capacity_pct'
+  | 'healthcheck_enabled'
+  | 'payload'
+>;
 
-type GlobalRoutingValues = z.infer<typeof schema>;
-
-interface ToggleFieldProps {
-  name: keyof GlobalRoutingValues;
+function NumberInput({
+  label,
+  value,
+  min = 0,
+  step = 1,
+  onChange,
+}: {
   label: string;
-}
-
-function ToggleField({ name, label }: ToggleFieldProps) {
-  const form = useFormContext<GlobalRoutingValues>();
+  value: number | null | undefined;
+  min?: number;
+  step?: number;
+  onChange: (value: number | null) => void;
+}) {
   return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field }) => (
-        <FormItem className="flex items-center justify-between py-1">
-          <Label className="text-xs font-medium">{label}</Label>
-          <FormControl>
-            <Switch
-              checked={field.value as boolean}
-              onCheckedChange={field.onChange}
-            />
-          </FormControl>
-        </FormItem>
-      )}
-    />
+    <label className="space-y-1">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <Input
+        type="number"
+        value={value ?? ''}
+        min={min}
+        step={step}
+        onChange={(event) => {
+          const raw = event.target.value;
+          onChange(raw === '' ? null : Number(raw));
+        }}
+        className="h-7 text-xs font-mono"
+      />
+    </label>
   );
 }
 
-export function GlobalRoutingSettingsCard() {
-  const form = useForm<GlobalRoutingValues>({
-    resolver: zodResolver(schema),
-    defaultValues: schema.parse({}),
-  });
+function rowToPayload(row: RateLimitRow) {
+  return {
+    provider: row.provider,
+    enabled: row.enabled,
+    rpm_limit: row.rpm_limit,
+    tpm_limit: row.tpm_limit,
+    max_concurrency: row.max_concurrency,
+    burst_multiplier: row.burst_multiplier,
+    retry_policy: row.retry_policy,
+    jitter: row.jitter,
+    daily_budget_usd: row.daily_budget_usd,
+    branch_reserved_capacity_pct: row.branch_reserved_capacity_pct,
+    healthcheck_enabled: row.healthcheck_enabled,
+    payload: row.payload ?? {},
+  };
+}
 
-  const capacity = form.watch('branchReservedCapacity');
+export function GlobalRoutingSettingsCard() {
+  const { data } = useRateLimits();
+  const patchRateLimits = usePatchRateLimits();
+  const [rows, setRows] = React.useState<RateLimitRow[]>([]);
+
+  React.useEffect(() => {
+    setRows(data?.rate_limits ?? []);
+  }, [data]);
+
+  const updateRow = <K extends keyof RateLimitRow>(
+    provider: string,
+    field: K,
+    value: RateLimitRow[K],
+  ) => {
+    setRows((prev) =>
+      prev.map((row) => (row.provider === provider ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const handleSave = async () => {
+    try {
+      await patchRateLimits.mutateAsync({
+        rate_limits: rows.map(rowToPayload),
+      });
+      toast.success('Rate limit settings saved.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save rate limits.');
+    }
+  };
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Global Routing Settings</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm">Provider Rate Limits</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Provider-wide limits used by workers and routing health checks.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={handleSave}
+            disabled={patchRateLimits.isPending || rows.length === 0}
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save Limits
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent>
-        <FormProvider {...form}>
-          <form className="space-y-1">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-              <ToggleField name="usePrivateFeed" label="Use private feed" />
-              <ToggleField name="autoFallback" label="Auto fallback" />
-              <ToggleField name="suspendedFallback" label="Suspended fallback" />
-              <ToggleField name="healthCheckEnabled" label="Health check enabled" />
-              <ToggleField name="autoReloadSettings" label="Auto-reload settings on change" />
+      <CardContent className="space-y-3">
+        {rows.map((row) => (
+          <div key={row.provider} className="rounded-md border border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">{row.provider}</p>
+                <p className="text-xs text-muted-foreground">{row.retry_policy}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <Label className="flex items-center gap-2 text-xs">
+                  Enabled
+                  <Switch
+                    checked={row.enabled}
+                    onCheckedChange={(checked) => updateRow(row.provider, 'enabled', checked)}
+                  />
+                </Label>
+                <Label className="flex items-center gap-2 text-xs">
+                  Healthcheck
+                  <Switch
+                    checked={row.healthcheck_enabled}
+                    onCheckedChange={(checked) => updateRow(row.provider, 'healthcheck_enabled', checked)}
+                  />
+                </Label>
+                <Label className="flex items-center gap-2 text-xs">
+                  Jitter
+                  <Switch
+                    checked={row.jitter}
+                    onCheckedChange={(checked) => updateRow(row.provider, 'jitter', checked)}
+                  />
+                </Label>
+              </div>
             </div>
 
-            <div className="space-y-1.5 pt-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium">Branch reserved capacity</Label>
-                <span className="text-xs font-mono tabular-nums">{capacity}%</span>
-              </div>
-              <Slider
-                min={0}
-                max={100}
-                step={1}
-                value={[capacity]}
-                onValueChange={([v]) =>
-                  form.setValue('branchReservedCapacity', v, { shouldDirty: true })
-                }
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mt-3">
+              <NumberInput
+                label="RPM"
+                value={row.rpm_limit}
+                onChange={(value) => updateRow(row.provider, 'rpm_limit', value ?? 0)}
+              />
+              <NumberInput
+                label="TPM"
+                value={row.tpm_limit}
+                onChange={(value) => updateRow(row.provider, 'tpm_limit', value ?? 0)}
+              />
+              <NumberInput
+                label="Concurrency"
+                value={row.max_concurrency}
+                onChange={(value) => updateRow(row.provider, 'max_concurrency', value ?? 0)}
+              />
+              <NumberInput
+                label="Burst"
+                value={row.burst_multiplier}
+                step={0.1}
+                onChange={(value) => updateRow(row.provider, 'burst_multiplier', value ?? 1)}
+              />
+              <NumberInput
+                label="Daily USD"
+                value={row.daily_budget_usd}
+                step={0.01}
+                onChange={(value) => updateRow(row.provider, 'daily_budget_usd', value)}
+              />
+              <NumberInput
+                label="Branch Reserve %"
+                value={row.branch_reserved_capacity_pct}
+                onChange={(value) => updateRow(row.provider, 'branch_reserved_capacity_pct', value ?? 0)}
               />
             </div>
-          </form>
-        </FormProvider>
+          </div>
+        ))}
+
+        {rows.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-6">
+            No provider rate limits returned by the API.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

@@ -8,8 +8,8 @@ Provides:
   GET  /api/integrations/zep/mappings
   PATCH /api/integrations/zep/mappings
   GET  /api/integrations/zep/status
-  POST /api/integrations/webhooks/test   (fleshed out from stub)
-  POST /api/integrations/webhooks/replay (fleshed out from stub)
+  POST /api/integrations/webhooks/test
+  POST /api/integrations/webhooks/replay
 """
 from __future__ import annotations
 
@@ -40,6 +40,7 @@ from backend.app.schemas.api import (
 )
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
+webhooks_router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
 _SESSION = Annotated[AsyncSession, Depends(get_session)]
 logger = logging.getLogger(__name__)
@@ -57,21 +58,27 @@ except ImportError:  # pragma: no cover
     async def zep_status_summary() -> dict:  # type: ignore[misc]
         return {"enabled": False, "mode": "unknown", "degraded": True}
 
-try:
-    from backend.app.workers.celery_app import celery_app
-except ImportError:  # pragma: no cover
-    celery_app = None  # type: ignore[assignment]
+
+def _zep_runtime_enabled() -> bool:
+    from backend.app.core.config import settings
+
+    return bool(settings.zep_enabled and settings.zep_api_key)
 
 
 def _zep_row_to_response(row: ZepSettingModel) -> ZepSettingResponse:
+    enabled = bool(row.enabled and _zep_runtime_enabled())
+    mode = row.mode if enabled else "local"
+    payload = dict(row.payload or {})
+    payload["runtime_enabled"] = enabled
+    payload["active_memory"] = mode
     return ZepSettingResponse(
         setting_id=row.setting_id,
-        enabled=row.enabled,
-        mode=row.mode,
+        enabled=enabled,
+        mode=mode,
         api_key_env=row.api_key_env,
         cache_ttl_seconds=row.cache_ttl_seconds,
-        degraded=row.degraded,
-        payload=dict(row.payload or {}),
+        degraded=False if not enabled else row.degraded,
+        payload=payload,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -105,6 +112,9 @@ async def patch_zep(
     updates = payload.model_dump(exclude_none=True)
     for key, val in updates.items():
         setattr(row, key, val)
+    if not _zep_runtime_enabled():
+        row.enabled = False
+        row.degraded = False
     await session.commit()
     await session.refresh(row)
 
@@ -126,14 +136,17 @@ async def patch_zep(
 @router.post("/zep/test", response_model=ZepTestResponse, summary="Test Zep memory connectivity")
 async def test_zep() -> ZepTestResponse:
     try:
+        if not _zep_runtime_enabled():
+            return ZepTestResponse(ok=False, latency_ms=0, error="Zep is disabled; local ledger memory is active.")
         if get_memory is None:
             return ZepTestResponse(ok=False, latency_ms=None, error="memory factory not available")
         provider = get_memory()
         t0 = time.monotonic()
         health = await provider.healthcheck()
         latency_ms = int((time.monotonic() - t0) * 1000)
-        ok = bool(health.get("ok", False))
-        return ZepTestResponse(ok=ok, latency_ms=latency_ms, error=None if ok else str(health.get("error", "healthcheck failed")))
+        health_payload = health.model_dump() if hasattr(health, "model_dump") else dict(health)
+        ok = bool(health_payload.get("ok", False))
+        return ZepTestResponse(ok=ok, latency_ms=latency_ms, error=None if ok else str(health_payload.get("error", "healthcheck failed")))
     except Exception as exc:
         return ZepTestResponse(ok=False, latency_ms=None, error=str(exc))
 
@@ -145,16 +158,19 @@ async def test_zep() -> ZepTestResponse:
 
 @router.post("/zep/sync", response_model=ZepSyncResponse, summary="Enqueue Zep memory sync for a run")
 async def sync_zep(run_id: str = Query(...)) -> ZepSyncResponse:
+    if not _zep_runtime_enabled():
+        return ZepSyncResponse(enqueued=False, task_id=None, run_id=run_id)
+
     task_id: str | None = None
     try:
-        if celery_app is None:
-            raise RuntimeError("celery_app not available")
-        result = celery_app.send_task(
-            "sync_zep_memory",
-            kwargs={"run_id": run_id},
-            queue="p2",
+        from backend.app.workers.scheduler import enqueue, make_envelope
+
+        envelope = make_envelope(
+            job_type="sync_zep_memory",
+            run_id=run_id,
+            payload={"run_id": run_id},
         )
-        task_id = result.id
+        task_id = await enqueue(envelope)
         return ZepSyncResponse(enqueued=True, task_id=task_id, run_id=run_id)
     except Exception as exc:
         logger.warning("Could not enqueue sync_zep_memory (broker unavailable): %s", exc)
@@ -212,6 +228,7 @@ async def get_zep_status() -> ZepStatusResponse:
 # ---------------------------------------------------------------------------
 
 
+@webhooks_router.post("/test", response_model=WebhookTestResponse, summary="Send a signed test webhook event")
 @router.post("/webhooks/test", response_model=WebhookTestResponse, summary="Send a signed test webhook event")
 async def webhooks_test(
     body: WebhookTestRequest,
@@ -285,6 +302,7 @@ async def webhooks_test(
         return WebhookTestResponse(ok=False, error=str(exc))
 
 
+@webhooks_router.post("/replay", response_model=WebhookTestResponse, summary="Replay a stored webhook event")
 @router.post("/webhooks/replay", response_model=WebhookTestResponse, summary="Replay a stored webhook event")
 async def webhooks_replay(
     body: WebhookReplayRequest,

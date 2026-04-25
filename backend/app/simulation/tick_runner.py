@@ -32,7 +32,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -64,6 +64,10 @@ from backend.app.simulation.active_selection import (
     select_active_heroes,
 )
 from backend.app.simulation.metrics import compute_universe_metrics
+from backend.app.simulation.lifecycle import (
+    apply_universe_completion_decision,
+    prepare_results_job_if_run_terminal,
+)
 from backend.app.simulation.prompt_builder import PromptBuilder
 from backend.app.simulation.tool_parser import ToolParseError, ToolParser
 from backend.app.simulation.validators import ValidationContext
@@ -195,11 +199,15 @@ async def run_tick(
             cached = await scheduler.get_done_result(idem_key)
         except Exception:
             cached = None
+        if cached is None:
+            raise RuntimeError(
+                f"tick idempotency key {idem_key!r} is already claimed but has no done marker"
+            )
         _log.info(
-            "tick %s already running / done (cached=%r); short-circuit",
+            "tick %s already done (cached=%r); short-circuit",
             idem_key, cached,
         )
-        return {**summary, "status": "already_running", "cached": cached}
+        return {**summary, "status": "already_done", "cached": cached}
 
     # ---- 2. Load Universe + assert active -----------------------------
     universe: UniverseModel | None = await session.get(UniverseModel, ctx.universe_id)
@@ -511,7 +519,7 @@ async def run_tick(
     except Exception as exc:
         _log.debug("ws publish failed: %s", exc)
 
-    # ---- 16. Update universe.current_tick + auto-enqueue next ---------
+    # ---- 16. Update universe.current_tick + lifecycle + auto-enqueue next
     try:
         await session.refresh(universe)
     except Exception:
@@ -522,6 +530,20 @@ async def run_tick(
         flag_modified(universe, "latest_metrics")
     except Exception:
         pass
+    completion_summary = await apply_universe_completion_decision(
+        session=session,
+        run=run_row,
+        universe=universe,
+        tick=ctx.tick,
+        god_decision=apply_summary.get("god_decision"),
+        metrics=dict(metrics) if metrics else {},
+    )
+    summary["completion_summary"] = completion_summary
+    results_envelope = await prepare_results_job_if_run_terminal(
+        session=session,
+        run_id=ctx.run_id,
+        reason=completion_summary.get("reason", "tick_lifecycle"),
+    )
     await session.commit()
 
     next_tick_enqueued = False
@@ -544,6 +566,15 @@ async def run_tick(
             _log.debug("auto-enqueue next tick skipped: %s", exc)
 
     summary["next_tick_enqueued"] = next_tick_enqueued
+    results_job_enqueued = False
+    if results_envelope is not None:
+        try:
+            await scheduler.enqueue(results_envelope)
+            results_job_enqueued = True
+            summary["results_job_id"] = results_envelope.job_id
+        except Exception as exc:
+            _log.debug("results aggregation enqueue skipped: %s", exc)
+    summary["results_job_enqueued"] = results_job_enqueued
 
     # ---- 17. Mark idempotency done ------------------------------------
     try:
@@ -899,6 +930,18 @@ async def _apply_tick_results(
                 content = str(args.get("content") or "")[:2000]
                 if not content:
                     continue
+                visibility_scope = str(args.get("visibility_scope") or "public").lower()
+                visibility_scope = {
+                    "private_group": "private",
+                    "group": "cohort",
+                    "cohort_private": "cohort",
+                    "followers_only": "followers",
+                    "friends": "followers",
+                    "global": "public",
+                }.get(visibility_scope, visibility_scope)
+                if visibility_scope not in {"public", "followers", "private", "cohort"}:
+                    visibility_scope = "public"
+
                 post = SocialPost(
                     post_id=new_id("post"),
                     universe_id=ctx.universe_id,
@@ -909,10 +952,10 @@ async def _apply_tick_results(
                     content=content,
                     stance_signal=dict(args.get("stance_signal") or {}),
                     emotion_signal=dict(args.get("emotion_signal") or {}),
-                    credibility_signal=float(args.get("credibility_signal", 0.5)),
-                    visibility_scope=str(args.get("visibility_scope") or "public"),
-                    reach_score=float(args.get("reach_score", 0.3)),
-                    hot_score=float(args.get("hot_score", 0.0)),
+                    credibility_signal=max(0.0, min(1.0, float(args.get("credibility_signal", 0.5)))),
+                    visibility_scope=visibility_scope,
+                    reach_score=max(0.0, min(1.0, float(args.get("reach_score", 0.3)))),
+                    hot_score=max(0.0, float(args.get("hot_score", 0.0))),
                     reactions={},
                     repost_count=0,
                     comment_count=0,
@@ -927,7 +970,7 @@ async def _apply_tick_results(
             args = entry.get("args") or {}
             if tool_id == "queue_event":
                 try:
-                    sched = max(int(args.get("scheduled_tick", ctx.tick + 1)), ctx.tick)
+                    sched = max(int(args.get("scheduled_tick", ctx.tick + 1)), ctx.tick + 1)
                     ev = Event(
                         event_id=new_id("evt"),
                         universe_id=ctx.universe_id,
@@ -1105,8 +1148,12 @@ async def _apply_tick_results(
                 continue
             for raw in proposals:
                 try:
-                    raw = dict(raw)
-                    raw.setdefault("parent_cohort_id", parent_cid)
+                    raw = _adapt_split_tool_payload(
+                        raw,
+                        parent_row=parent_row,
+                        parent_cohort_id=parent_cid,
+                        split_distance_threshold=params.split_merge.split_distance_threshold,
+                    )
                     proposal = SplitProposal.model_validate(raw)
                     children = await commit_split(
                         session,
@@ -1281,21 +1328,12 @@ async def _apply_tick_results(
 
         # Branch decisions: build a snapshot + ask the policy gate.
         if decision_label in ("spawn_candidate", "spawn_active"):
-            policy = BranchPolicy(
-                max_active_universes=50,
-                max_total_branches=500,
-                max_depth=8,
-                max_branches_per_tick=5,
-                branch_cooldown_ticks=3,
-                min_divergence_score=0.35,
-                auto_prune_low_value=True,
-            )
-            snapshot = MultiverseSnapshot(
-                big_bang_id=ctx.run_id,
-                active_universe_count=1,  # caller can override
-                total_branch_count=0,
-                max_depth_reached=universe.branch_depth,
-                branches_this_tick=0,
+            policy, snapshot = await _load_branch_policy_snapshot(
+                session=session,
+                run_id=ctx.run_id,
+                parent_universe_id=ctx.universe_id,
+                parent_tick=ctx.tick,
+                parent_depth=universe.branch_depth,
             )
             policy_result = evaluate_branch_policy(
                 parent_universe_id=ctx.universe_id,
@@ -1424,6 +1462,197 @@ def _clone_hero_to_tick(src: Any, new_tick: int) -> Any:
         queued_events=list(src.queued_events or []),
         recent_posts=list(src.recent_posts or []),
         memory_session_id=src.memory_session_id,
+    )
+
+
+def _adapt_split_tool_payload(
+    raw: Any,
+    *,
+    parent_row: Any,
+    parent_cohort_id: str,
+    split_distance_threshold: float,
+) -> dict:
+    """Adapt the SoT `propose_split.args` shape into engine SplitProposal."""
+    payload = dict(raw or {})
+    if payload.get("tool_id") == "propose_split" and isinstance(payload.get("args"), dict):
+        payload = dict(payload["args"])
+
+    if "children" in payload:
+        payload.setdefault("parent_cohort_id", parent_cohort_id)
+        payload.setdefault("split_distance", max(0.5, split_distance_threshold))
+        return payload
+
+    proposed = payload.get("proposed_children")
+    if not isinstance(proposed, list):
+        payload.setdefault("parent_cohort_id", parent_cohort_id)
+        return payload
+
+    parent_pop = max(int(parent_row.represented_population or 0), 0)
+    shares: list[float] = []
+    for child in proposed:
+        if isinstance(child, dict):
+            try:
+                shares.append(max(0.0, float(child.get("population_share", 0.0))))
+            except (TypeError, ValueError):
+                shares.append(0.0)
+    share_total = sum(shares) or 1.0
+
+    children: list[dict] = []
+    assigned = 0
+    max_delta = 0.0
+    for idx, child in enumerate(proposed):
+        if not isinstance(child, dict):
+            continue
+        share = shares[idx] / share_total if idx < len(shares) else 0.0
+        if idx == len(proposed) - 1:
+            represented_population = max(0, parent_pop - assigned)
+        else:
+            represented_population = max(0, int(round(parent_pop * share)))
+            assigned += represented_population
+
+        parent_stance = dict(parent_row.issue_stance or {})
+        stance_delta = child.get("issue_stance_delta") or {}
+        if isinstance(stance_delta, dict):
+            for key, value in stance_delta.items():
+                try:
+                    delta_value = float(value)
+                except (TypeError, ValueError):
+                    continue
+                parent_stance[key] = max(-1.0, min(1.0, float(parent_stance.get(key, 0.0)) + delta_value))
+                max_delta = max(max_delta, abs(delta_value))
+
+        seed_emotions = dict(parent_row.emotions or {})
+        emotion_delta = child.get("emotion_delta") or {}
+        if isinstance(emotion_delta, dict):
+            for key, value in emotion_delta.items():
+                try:
+                    delta_value = float(value)
+                except (TypeError, ValueError):
+                    continue
+                seed_emotions[key] = max(0.0, min(10.0, float(seed_emotions.get(key, 5.0)) + delta_value))
+                max_delta = max(max_delta, min(1.0, abs(delta_value) / 10.0))
+
+        try:
+            expression = float(child.get("expression_level_hint", parent_row.expression_level))
+        except (TypeError, ValueError):
+            expression = float(parent_row.expression_level)
+        expression = max(0.0, min(1.0, expression))
+        max_delta = max(max_delta, abs(expression - float(parent_row.expression_level)))
+
+        children.append(
+            {
+                "archetype_id": parent_row.archetype_id,
+                "represented_population": represented_population,
+                "issue_stance": parent_stance,
+                "expression_level": expression,
+                "mobilization_mode": parent_row.mobilization_mode,
+                "speech_mode": parent_row.speech_mode,
+                "seed_emotions": seed_emotions,
+                "interpretation_note": str(
+                    child.get("differentiator")
+                    or child.get("label_hint")
+                    or "LLM proposed split child"
+                )[:800],
+            }
+        )
+
+    return {
+        "parent_cohort_id": parent_cohort_id,
+        "children": children,
+        "split_distance": max(float(split_distance_threshold), max_delta, 0.35),
+        "rationale": str(payload.get("rationale") or "LLM proposed split")[:800],
+    }
+
+
+async def _load_branch_policy_snapshot(
+    *,
+    session: AsyncSession,
+    run_id: str,
+    parent_universe_id: str,
+    parent_tick: int,
+    parent_depth: int,
+) -> tuple[BranchPolicy, MultiverseSnapshot]:
+    from backend.app.models.branches import BranchNodeModel
+    from backend.app.models.settings import BranchPolicySettingModel
+    from backend.app.models.universes import UniverseModel
+
+    policy_row = await session.get(BranchPolicySettingModel, "default")
+    if policy_row is None:
+        policy = BranchPolicy(
+            max_active_universes=50,
+            max_total_branches=500,
+            max_depth=8,
+            max_branches_per_tick=5,
+            branch_cooldown_ticks=3,
+            min_divergence_score=0.35,
+            auto_prune_low_value=True,
+        )
+    else:
+        policy = BranchPolicy(
+            max_active_universes=policy_row.max_active_universes,
+            max_total_branches=policy_row.max_total_branches,
+            max_depth=policy_row.max_depth,
+            max_branches_per_tick=policy_row.max_branches_per_tick,
+            branch_cooldown_ticks=policy_row.branch_cooldown_ticks,
+            min_divergence_score=policy_row.min_divergence_score,
+            auto_prune_low_value=policy_row.auto_prune_low_value,
+        )
+
+    active_count = (
+        await session.execute(
+            select(func.count(UniverseModel.universe_id)).where(
+                UniverseModel.big_bang_id == run_id,
+                UniverseModel.status == "active",
+            )
+        )
+    ).scalar_one()
+    total_branches = (
+        await session.execute(
+            select(func.count(UniverseModel.universe_id)).where(
+                UniverseModel.big_bang_id == run_id,
+                UniverseModel.parent_universe_id.is_not(None),
+            )
+        )
+    ).scalar_one()
+    max_depth = (
+        await session.execute(
+            select(func.max(UniverseModel.branch_depth)).where(
+                UniverseModel.big_bang_id == run_id
+            )
+        )
+    ).scalar_one() or parent_depth
+    branches_this_tick = (
+        await session.execute(
+            select(func.count(UniverseModel.universe_id)).where(
+                UniverseModel.big_bang_id == run_id,
+                UniverseModel.parent_universe_id.is_not(None),
+                UniverseModel.branch_from_tick == parent_tick,
+            )
+        )
+    ).scalar_one()
+
+    branch_rows = (
+        await session.execute(
+            select(BranchNodeModel.parent_universe_id, BranchNodeModel.branch_tick)
+            .join(UniverseModel, BranchNodeModel.universe_id == UniverseModel.universe_id)
+            .where(UniverseModel.big_bang_id == run_id)
+        )
+    ).all()
+    last_branch_tick: dict[str, int] = {}
+    for parent_id, branch_tick in branch_rows:
+        if parent_id:
+            last_branch_tick[parent_id] = max(
+                last_branch_tick.get(parent_id, -1), int(branch_tick)
+            )
+
+    return policy, MultiverseSnapshot(
+        big_bang_id=run_id,
+        active_universe_count=int(active_count),
+        total_branch_count=int(total_branches),
+        max_depth_reached=int(max_depth),
+        branches_this_tick=int(branches_this_tick),
+        last_branch_tick_per_universe=last_branch_tick,
+        parent_metrics_history={parent_universe_id: []},
     )
 
 

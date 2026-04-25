@@ -44,15 +44,19 @@ export function JobActionMenu({
           <X className="mr-2 h-3.5 w-3.5" />
           Cancel
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => onViewArtifact?.(jobId)}>
-          <FileText className="mr-2 h-3.5 w-3.5" />
-          View artifact
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onViewPrompt?.(jobId)}>
-          <MessageSquare className="mr-2 h-3.5 w-3.5" />
-          View prompt
-        </DropdownMenuItem>
+        {onViewArtifact || onViewPrompt ? <DropdownMenuSeparator /> : null}
+        {onViewArtifact ? (
+          <DropdownMenuItem onClick={() => onViewArtifact(jobId)}>
+            <FileText className="mr-2 h-3.5 w-3.5" />
+            View artifact
+          </DropdownMenuItem>
+        ) : null}
+        {onViewPrompt ? (
+          <DropdownMenuItem onClick={() => onViewPrompt(jobId)}>
+            <MessageSquare className="mr-2 h-3.5 w-3.5" />
+            View payload
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => onDelete?.(jobId)}

@@ -184,12 +184,14 @@ class TestMetricsEndpoint:
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
-    def test_readyz_returns_200(self) -> None:
+    def test_readyz_reports_dependency_state(self) -> None:
         from backend.app.main import create_app
 
         app = create_app()
         client = TestClient(app)
         resp = client.get("/readyz")
-        assert resp.status_code == 200
+        assert resp.status_code in {200, 503}
         data = resp.json()
-        assert data["ok"] is True
+        assert "ok" in data
+        assert "checks" in data
+        assert {"database", "redis", "openrouter", "zep"}.issubset(data["checks"])

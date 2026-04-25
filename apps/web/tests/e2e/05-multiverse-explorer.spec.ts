@@ -1,13 +1,18 @@
 import { test, expect } from '@playwright/test';
+import { firstRun } from './helpers';
 
-test('multiverse explorer renders canvas with nodes and KPI strip', async ({ page }) => {
-  await page.goto('/runs/test-run/multiverse');
+test('multiverse explorer renders canvas with nodes and KPI strip', async ({ page, request }) => {
+  const run = await firstRun(request);
+  if (!run) {
+    test.skip(true, 'requires at least one backend run');
+    return;
+  }
+
+  await page.goto(`/runs/${run.run_id}/multiverse`);
 
   // Page heading
   await expect(page.getByRole('heading', { name: /Recursive Multiverse Explorer/i })).toBeVisible();
 
-  // KPI strip renders (shows kpi labels from KpiStrip component)
-  // The KpiStrip on multiverse shows things like "Total Universes", "Active", etc.
   await expect(page.getByText(/Total Universes|Active|Max Depth|Avg Depth/i).first()).toBeVisible();
 
   // React Flow canvas container renders
@@ -15,6 +20,5 @@ test('multiverse explorer renders canvas with nodes and KPI strip', async ({ pag
   const canvas = page.locator('.react-flow, [class*="react-flow"]').first();
   await expect(canvas).toBeVisible({ timeout: 10_000 });
 
-  // Node count indicator shows visible nodes
   await expect(page.getByText(/\d+\/\d+ visible/)).toBeVisible({ timeout: 10_000 });
 });

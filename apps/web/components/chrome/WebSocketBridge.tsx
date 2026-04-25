@@ -9,12 +9,13 @@ import { useWebSocketSubscription } from '@/lib/ws/hooks';
  * Placed in the (app) layout so it activates whenever a runId is in the route.
  */
 export function WebSocketBridge() {
-  const params = useParams<{ runId?: string; uid?: string }>();
+  const params = useParams<{ runId?: string; universeId?: string; uid?: string }>();
   const runId = params?.runId;
-  const uid = params?.uid;
+  const uid = params?.universeId ?? params?.uid;
 
   useWebSocketSubscription('runs', runId);
   useWebSocketSubscription('universes', uid);
+  useWebSocketSubscription('jobs');
 
   return null;
 }

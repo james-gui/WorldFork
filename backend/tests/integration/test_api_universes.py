@@ -13,6 +13,12 @@ from backend.app.models.universes import UniverseModel
 
 pytestmark = [pytest.mark.asyncio]
 
+_BRANCH_DELTA = {
+    "type": "parameter_shift",
+    "target": "attention_decay_rate",
+    "delta": {"value": 0.1},
+}
+
 
 # ---------------------------------------------------------------------------
 # Fixtures — seed a run + root universe
@@ -184,7 +190,7 @@ async def test_branch_preview_placeholder(client: AsyncClient, db_session: Async
 
     resp = await client.post(
         f"/api/universes/{uni_id}/branch-preview",
-        json={"delta": {"type": "parameter_shift", "params": {}}, "reason": "test"},
+        json={"delta": _BRANCH_DELTA, "reason": "test"},
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -195,7 +201,7 @@ async def test_branch_preview_placeholder(client: AsyncClient, db_session: Async
 async def test_branch_preview_nonexistent_404(client: AsyncClient):
     resp = await client.post(
         "/api/universes/no_such/branch-preview",
-        json={"delta": {}, "reason": ""},
+        json={"delta": _BRANCH_DELTA, "reason": ""},
     )
     assert resp.status_code == 404
 
@@ -210,17 +216,20 @@ async def test_branch_returns_candidate_id(client: AsyncClient, db_session: Asyn
 
     resp = await client.post(
         f"/api/universes/{uni_id}/branch",
-        json={"delta": {}, "reason": "test branch"},
+        json={"delta": _BRANCH_DELTA, "reason": "test branch"},
     )
     assert resp.status_code == 202, resp.text
     data = resp.json()
     assert "candidate_universe_id" in data
     assert "job_id" in data
-    assert data["candidate_universe_id"].startswith("uni_")
+    assert data["candidate_universe_id"].startswith(("uni_", "U_"))
 
 
 async def test_branch_nonexistent_404(client: AsyncClient):
-    resp = await client.post("/api/universes/no_such/branch", json={"delta": {}, "reason": ""})
+    resp = await client.post(
+        "/api/universes/no_such/branch",
+        json={"delta": _BRANCH_DELTA, "reason": ""},
+    )
     assert resp.status_code == 404
 
 

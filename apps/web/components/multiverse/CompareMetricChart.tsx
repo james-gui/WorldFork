@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
-import type { MultiverseNodeData } from '@/lib/mocks/multiverse';
+import type { MultiverseNodeData } from '@/lib/multiverse/types';
 
 // Palette for up to 4 universes.
 const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ec4899'];
@@ -23,10 +23,7 @@ interface CompareMetricChartProps {
   metric: OverlayMetric;
 }
 
-// Generates a deterministic mock time-series for a metric given a node.
-// Replace with real tick-artifact data when the hook is available.
-function mockSeries(node: MultiverseNodeData, metric: OverlayMetric): number[] {
-  // Seed the series from node.divergence_series so each universe looks distinct.
+function metricSeries(node: MultiverseNodeData, metric: OverlayMetric): number[] {
   const base = node.divergence_series;
   return base.map((pt) => {
     switch (metric) {
@@ -46,7 +43,7 @@ function buildChartData(nodes: MultiverseNodeData[], metric: OverlayMetric) {
   return Array.from({ length: maxLen }, (_, tick) => {
     const row: Record<string, number | string> = { tick };
     nodes.forEach((n) => {
-      const series = mockSeries(n, metric);
+      const series = metricSeries(n, metric);
       row[n.id] = series[tick] ?? series[series.length - 1] ?? 0;
     });
     return row;

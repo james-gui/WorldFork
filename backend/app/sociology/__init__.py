@@ -42,9 +42,7 @@ from backend.app.sociology.thresholds import (
 from backend.app.sociology.transitions import run_all_transitions
 from backend.app.sociology.trust import TrustGraph
 
-# Re-export propose_splits / propose_merges as None placeholders. These are
-# triggered by LLM proposals (B3-A) and committed via commit_split /
-# commit_merge here. The aliases preserve a stable public API name.
+# Aliases preserve the public API names used by LLM proposal handling.
 propose_splits = evaluate_split_validity
 propose_merges = evaluate_merge_validity
 

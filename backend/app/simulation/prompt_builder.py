@@ -344,8 +344,8 @@ class PromptBuilder:
             seed_key=f"init:{hash(scenario_text)}",
         )
 
-        # Initializer doesn't have an actual clock yet — we still synthesize a
-        # placeholder so PromptPacket validation passes.  current_tick=0.
+        # Initializer runs before the persisted clock exists, so synthesize the
+        # tick-0 clock required by PromptPacket validation.
         clock = Clock(
             current_tick=0,
             tick_duration_minutes=tick_duration_minutes,
@@ -374,7 +374,7 @@ class PromptBuilder:
             system=system,
             clock=clock,
             actor_id="initializer",
-            actor_kind="god",  # placeholder per deliverable spec
+            actor_kind="god",
             archetype=None,
             state={
                 "scenario_text": scenario_text,

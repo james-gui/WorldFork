@@ -678,7 +678,7 @@ async def test_initializer_live_openrouter(
             base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             default_model="openai/gpt-4o-mini",
             fallback_model="openai/gpt-4o-mini",
-            http_referer="http://localhost:3000",
+            http_referer="http://localhost:3003",
             x_title="WorldFork-tests",
         ),
     )

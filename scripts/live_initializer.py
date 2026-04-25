@@ -107,7 +107,7 @@ async def main() -> None:
         base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         default_model="openai/gpt-4o-mini",
         fallback_model="openai/gpt-4o-mini",
-        http_referer=os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost:3000"),
+        http_referer=os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost:3003"),
         x_title=os.environ.get("OPENROUTER_TITLE", "WorldFork"),
     )
     register_provider("openrouter", provider)

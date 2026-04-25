@@ -9,7 +9,7 @@
   "properties": {
     "decision": {
       "type": "string",
-      "enum": ["continue", "freeze", "kill", "spawn_candidate", "spawn_active"],
+      "enum": ["continue", "freeze", "kill", "spawn_candidate", "spawn_active", "complete_universe"],
       "description": "Top-level disposition for the reviewed universe."
     },
     "branch_delta": {
@@ -30,9 +30,10 @@
             "delta": {"type": "object"},
             "actor_id": {"type": "string"},
             "field": {"type": "string"},
-            "value": {},
+            "new_value": {},
             "hero_id": {"type": "string"},
-            "decision_override": {"type": "object"}
+            "tick": {"type": "integer", "minimum": 0},
+            "new_decision": {"type": "object"}
           },
           "allOf": [
             {
@@ -45,11 +46,11 @@
             },
             {
               "if": {"properties": {"type": {"const": "actor_state_override"}}, "required": ["type"]},
-              "then": {"required": ["actor_id", "field", "value"]}
+              "then": {"required": ["actor_id", "field", "new_value"]}
             },
             {
               "if": {"properties": {"type": {"const": "hero_decision_override"}}, "required": ["type"]},
-              "then": {"required": ["hero_id", "decision_override"]}
+              "then": {"required": ["hero_id", "tick", "new_decision"]}
             }
           ]
         }

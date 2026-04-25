@@ -3,25 +3,31 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
+import type { JobInfo } from '@/lib/api/types';
 
-// Generate 24h * 12 5-min buckets mock data
-function generateHeatmapData() {
-  const now = Date.now();
+function buildHeatmapData(jobs: JobInfo[] = [], now: number) {
   const BUCKET = 5 * 60 * 1000; // 5 min
   const COLS = 288; // 24h / 5min
-  return Array.from({ length: COLS }, (_, i) => ({
-    ts: now - (COLS - i) * BUCKET,
-    value: Math.round(Math.random() * 100),
+  const buckets = Array.from({ length: COLS }, (_, i) => ({
+    ts: now - (COLS - i - 1) * BUCKET,
+    value: 0,
   }));
+  const start = buckets[0]?.ts ?? now;
+  for (const job of jobs) {
+    const raw = job.created_at ?? job.enqueued_at ?? job.started_at;
+    if (!raw) continue;
+    const ts = new Date(raw).getTime();
+    if (Number.isNaN(ts) || ts < start || ts > now) continue;
+    const idx = Math.min(COLS - 1, Math.max(0, Math.floor((ts - start) / BUCKET)));
+    buckets[idx].value += 1;
+  }
+  return buckets;
 }
 
-const DATA = generateHeatmapData();
-const MAX_VAL = Math.max(...DATA.map((d) => d.value));
-
 function colorForValue(v: number, max: number): string {
-  const ratio = v / max;
+  const ratio = max <= 0 ? 0 : v / max;
   if (ratio < 0.2) return 'bg-blue-100 dark:bg-blue-950';
   if (ratio < 0.4) return 'bg-blue-300 dark:bg-blue-800';
   if (ratio < 0.6) return 'bg-indigo-400 dark:bg-indigo-700';
@@ -35,14 +41,25 @@ function formatHour(ts: number) {
 
 interface JobsHeatmapProps {
   className?: string;
+  jobs?: JobInfo[];
 }
 
-export function JobsHeatmap({ className }: JobsHeatmapProps) {
+export function JobsHeatmap({ className, jobs }: JobsHeatmapProps) {
   const [byQueue, setByQueue] = useState(false);
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
+  const data = useMemo(
+    () => (now === null ? [] : buildHeatmapData(jobs, now)),
+    [jobs, now],
+  );
+  const maxValue = Math.max(1, ...data.map((d) => d.value));
 
   // For display we only show every 4th column label (hourly)
   const hourLabels: { idx: number; label: string }[] = [];
-  DATA.forEach((d, i) => {
+  data.forEach((d, i) => {
     if (i % 12 === 0) {
       hourLabels.push({ idx: i, label: formatHour(d.ts) });
     }
@@ -66,28 +83,31 @@ export function JobsHeatmap({ className }: JobsHeatmapProps) {
       </CardHeader>
       <CardContent className="pb-4">
         {/* Heatmap strip */}
+        {now === null ? (
+          <div className="h-[49px] rounded-md bg-muted/50" aria-label="Loading job heatmap" />
+        ) : (
         <div className="overflow-x-auto">
-          <div className="flex gap-px" style={{ minWidth: DATA.length * 5 }}>
-            {DATA.map((d, i) => (
+          <div className="flex gap-px" style={{ minWidth: data.length * 5 }}>
+            {data.map((d, i) => (
               <div
                 key={i}
                 title={`${formatHour(d.ts)}: ${d.value} tasks`}
                 className={cn(
                   'h-8 flex-1 rounded-[1px] cursor-pointer hover:opacity-80 transition-opacity',
-                  colorForValue(d.value, MAX_VAL),
+                  colorForValue(d.value, maxValue),
                 )}
               />
             ))}
           </div>
           {/* Hour labels */}
-          <div className="flex mt-1" style={{ minWidth: DATA.length * 5 }}>
+          <div className="flex mt-1" style={{ minWidth: data.length * 5 }}>
             {hourLabels.map(({ idx, label }) => (
               <div
                 key={idx}
                 className="text-[9px] text-muted-foreground"
                 style={{
                   position: 'relative',
-                  left: `${(idx / DATA.length) * 100}%`,
+                  left: `${(idx / data.length) * 100}%`,
                   transform: 'translateX(-50%)',
                   flexShrink: 0,
                   width: 0,
@@ -100,6 +120,7 @@ export function JobsHeatmap({ className }: JobsHeatmapProps) {
             ))}
           </div>
         </div>
+        )}
         {/* Legend */}
         <div className="flex items-center gap-2 mt-4">
           <span className="text-[10px] text-muted-foreground">Low</span>

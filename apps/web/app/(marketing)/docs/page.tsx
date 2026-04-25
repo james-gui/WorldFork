@@ -4,8 +4,7 @@ import { Rocket, Code2, Brain, Heart, Users, Lightbulb } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 // Page — /docs
-// Placeholder documentation landing page. Real docs will be authored here when
-// the backend and schema stabilise.
+// Documentation overview for local development and API orientation.
 export default function DocsPage() {
   return (
     <div className="container mx-auto px-4 py-16 max-w-5xl">

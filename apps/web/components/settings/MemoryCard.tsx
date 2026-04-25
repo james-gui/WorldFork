@@ -45,8 +45,8 @@ export function MemoryCard() {
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="zep">Zep</SelectItem>
-                <SelectItem value="local">Local</SelectItem>
+                <SelectItem value="local_ledger">Local ledger</SelectItem>
+                <SelectItem value="zep" disabled>Zep disabled</SelectItem>
               </SelectContent>
             </Select>
             <FormMessage />
@@ -67,10 +67,9 @@ export function MemoryCard() {
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="cohort">cohort</SelectItem>
-                <SelectItem value="hero">hero</SelectItem>
+                <SelectItem value="local">local</SelectItem>
                 <SelectItem value="run">run</SelectItem>
-                <SelectItem value="hybrid">hybrid</SelectItem>
+                <SelectItem value="cohort">cohort</SelectItem>
               </SelectContent>
             </Select>
             <FormMessage />

@@ -39,12 +39,13 @@ out/
 .DS_Store
 
 # Run ledger (local data)
-runs/
-data/
+/runs/
+/data/
 
 # Logs
 *.log
-logs/
+/logs/
+/test-results/
 
 # Docker volumes
-docker-data/
+/docker-data/

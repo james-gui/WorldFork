@@ -3,10 +3,10 @@
 import * as React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import type { MockPost } from '@/lib/mocks/dashboard';
+import type { SocialPost } from '@/lib/dashboard/types';
 
 interface PostCardProps {
-  post: MockPost;
+  post: SocialPost;
 }
 
 function PostCardImpl({ post }: PostCardProps) {

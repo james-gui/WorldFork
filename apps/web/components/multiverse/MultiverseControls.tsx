@@ -22,6 +22,21 @@ export function MultiverseControls({ bbId, onCompare }: MultiverseControlsProps)
 
   const compareDisabled = compareSelection.length < 2;
 
+  React.useEffect(() => {
+    if (!autoplay) return;
+    const timer = window.setInterval(() => {
+      if (!sim.isPending) {
+        sim.mutate(
+          { bbId },
+          {
+            onError: () => toast.error('Autoplay failed to queue simulation'),
+          },
+        );
+      }
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [autoplay, bbId, sim]);
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-1.5">

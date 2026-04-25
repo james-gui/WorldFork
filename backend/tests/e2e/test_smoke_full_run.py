@@ -48,7 +48,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.e2e]
 async def test_post_runs_creates_db_row_and_returns_202(
     e2e_client,
 ):
-    """POST /api/runs persists a draft run and returns 202 with both IDs."""
+    """POST /api/runs persists an initializing run and returns 202 with both IDs."""
     body = {
         "display_name": "smoke e2e",
         "scenario_text": "smoke scenario",
@@ -62,7 +62,8 @@ async def test_post_runs_creates_db_row_and_returns_202(
     res = await e2e_client.post("/api/runs", json=body)
     assert res.status_code == 202, res.text
     payload = res.json()
-    assert payload["status"] == "draft"
+    assert payload["status"] == "initializing"
+    assert payload["enqueued"] is True
     assert payload["run_id"]
     assert payload["root_universe_id"]
 

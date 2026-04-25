@@ -14,6 +14,7 @@ from backend.app.models.heroes import HeroArchetypeModel, HeroStateModel
 from backend.app.models.jobs import JobModel
 from backend.app.models.llm_calls import LLMCallModel
 from backend.app.models.posts import SocialPostModel
+from backend.app.models.results import RunResultModel
 from backend.app.models.runs import BigBangRunModel
 from backend.app.models.settings import (
     BranchPolicySettingModel,
@@ -31,6 +32,7 @@ __all__ = [
     "TimestampMixin",
     # Runs
     "BigBangRunModel",
+    "RunResultModel",
     # Universes
     "UniverseModel",
     # Branches

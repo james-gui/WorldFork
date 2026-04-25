@@ -198,7 +198,12 @@ class GodReviewOutput(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     decision: Literal[
-        "continue", "freeze", "kill", "spawn_candidate", "spawn_active"
+        "continue",
+        "freeze",
+        "kill",
+        "spawn_candidate",
+        "spawn_active",
+        "complete_universe",
     ]
     branch_delta: BranchDelta | None = None
     marked_key_events: list[str] = Field(default_factory=list)

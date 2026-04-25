@@ -8,10 +8,11 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import JSON, Text, event
+from sqlalchemy import JSON
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import backend.app.models  # noqa: F401 - populate Base.metadata before SQLite type patching
 from backend.app.models.base import Base
 
 # ---------------------------------------------------------------------------
@@ -64,6 +65,7 @@ async def test_engine():
         TEST_DATABASE_URL,
         connect_args={"check_same_thread": False},
     )
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine

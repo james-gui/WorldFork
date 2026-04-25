@@ -9,8 +9,8 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn/ui frontend for the WorldF
 pnpm install
 
 # Start dev server
-pnpm dev
-# → http://localhost:3000
+pnpm dev --port 3003
+# → http://localhost:3003
 
 # Type-check
 pnpm typecheck
@@ -27,14 +27,14 @@ pnpm build
 Create a `.env.local` file (never commit it):
 
 ```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_WS_URL=ws://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8003
+NEXT_PUBLIC_WS_URL=ws://localhost:8003
 ```
 
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | Base URL of the FastAPI backend (default: `http://localhost:8000`) |
-| `NEXT_PUBLIC_WS_URL` | WebSocket base URL of the FastAPI backend (default: `ws://localhost:8000`) |
+| `NEXT_PUBLIC_API_URL` | Base URL of the FastAPI backend (default: `http://localhost:8003`) |
+| `NEXT_PUBLIC_WS_URL` | WebSocket base URL of the FastAPI backend (default: `ws://localhost:8003`) |
 
 ## Keyboard shortcuts
 

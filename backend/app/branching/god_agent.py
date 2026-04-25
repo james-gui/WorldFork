@@ -5,8 +5,8 @@ Wraps the per-tick God review into a single ``await god_review(...)`` call:
 1. Build a :class:`PromptPacket` via :class:`PromptBuilder.build_god_packet`.
 2. Dispatch through :func:`call_with_policy` with ``job_type="god_agent_review"``.
 3. Parse the JSON output via :meth:`ToolParser.parse_god_output`.
-4. Apply the §26 invariants (spawn_active without delta → spawn_candidate;
-   kill without rationale → placeholder; marked_key_events filtered to
+4. Apply the §26 invariants (spawn_active without delta -> spawn_candidate;
+   kill without rationale -> safe explanatory rationale; marked_key_events filtered to
    known IDs).
 5. Persist the decision to the ledger via
    :func:`backend.app.storage.artifacts.write_god_decision`.
@@ -170,7 +170,7 @@ def _ensure_kill_rationale(payload: dict[str, Any]) -> dict[str, Any]:
         main_factors = []
     if not main_factors:
         _log.warning(
-            "god_review: kill decision missing rationale.main_factors — appending placeholder"
+            "god_review: kill decision missing rationale.main_factors — appending fallback rationale"
         )
         new_rationale = dict(rationale)
         new_factors = list(main_factors)

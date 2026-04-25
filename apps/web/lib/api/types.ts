@@ -23,6 +23,10 @@ export interface CreateRunResponse {
   run_id: string;
   root_universe_id: string;
   status: string;
+  job_id?: string | null;
+  enqueued?: boolean;
+  degraded?: boolean;
+  error?: string | null;
 }
 
 export interface RunListItem {
@@ -38,6 +42,8 @@ export interface RunListItem {
   favorite: boolean;
   archived: boolean;
   root_universe_id: string;
+  active_universe_count: number;
+  total_universe_count: number;
 }
 
 export interface RunListResponse {
@@ -75,6 +81,32 @@ export interface PatchRunRequest {
   tags?: string[] | null;
   favorite?: boolean | null;
   archived?: boolean | null;
+}
+
+export interface RunResultsResponse {
+  run_id: string;
+  status: string;
+  generated_at?: string | null;
+  provider?: string | null;
+  model_used?: string | null;
+  summary?: string | null;
+  classifications: Record<string, unknown>;
+  branch_clusters: Record<string, unknown>[];
+  universe_outcomes: Record<string, unknown>[];
+  timeline_highlights: Record<string, unknown>[];
+  metrics: Record<string, unknown>;
+  artifact_path?: string | null;
+  error?: string | null;
+  job_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface RunResultsRegenerateResponse {
+  run_id: string;
+  job_id: string;
+  status: string;
+  enqueued: boolean;
 }
 
 export interface SoTBundleResponse {
@@ -166,6 +198,78 @@ export interface TickArtifactResponse {
   state_after: Record<string, unknown>;
   god_decision?: Record<string, unknown> | null;
   metrics: Record<string, unknown>;
+  prompt_summary: {
+    promptHash: string;
+    model: string;
+    cost: number;
+    tokens: { prompt: number; completion: number };
+    toolCalls: number;
+    provider: string;
+    traceId: string;
+  };
+  tool_calls: Array<{
+    id: string;
+    name: string;
+    status: 'success' | 'error' | 'skipped';
+    args: Record<string, unknown>;
+  }>;
+  emotion_trends: Array<Record<string, number>>;
+}
+
+export interface TickTraceActor {
+  actor_id: string;
+  actor_kind: string;
+  call_id?: string | null;
+  provider?: string | null;
+  model_used?: string | null;
+  job_type?: string | null;
+  prompt_packet?: Record<string, unknown> | null;
+  visible_feed: Record<string, unknown>[];
+  visible_events: Record<string, unknown>[];
+  retrieved_memory?: Record<string, unknown> | null;
+  raw_response?: Record<string, unknown> | string | null;
+  parsed_json?: Record<string, unknown> | null;
+  tool_calls: Record<string, unknown>[];
+  rationale?: Record<string, unknown> | string | null;
+  self_ratings: Record<string, unknown>;
+  state_before?: Record<string, unknown> | null;
+  state_after?: Record<string, unknown> | null;
+  state_delta: Record<string, unknown>;
+}
+
+export interface TickTraceResponse {
+  universe_id: string;
+  tick: number;
+  include_raw: boolean;
+  actors: TickTraceActor[];
+  state_before: Record<string, unknown>;
+  state_after: Record<string, unknown>;
+  god_decision?: Record<string, unknown> | null;
+  redactions_applied: boolean;
+  missing_artifacts: string[];
+}
+
+export interface ForceDeviationRequest {
+  tick: number;
+  mode: 'god_prompt' | 'structured_delta';
+  prompt?: string | null;
+  delta?: Record<string, unknown> | null;
+  reason?: string;
+  auto_start?: boolean;
+}
+
+export interface ForceDeviationResponse {
+  run_id: string;
+  parent_universe_id: string;
+  child_universe_id?: string | null;
+  tick: number;
+  mode: string;
+  job_id: string;
+  status: string;
+  enqueued: boolean;
+  generated_delta?: Record<string, unknown> | null;
+  audit_artifact_path?: string | null;
+  note: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +285,10 @@ export interface MultiverseTreeNode {
   current_tick: number;
   latest_metrics: Record<string, unknown>;
   branch_reason: string;
+  branch_delta: Record<string, unknown>;
+  lineage_path: string[];
   descendant_count: number;
+  created_at?: string | null;
 }
 
 export interface MultiverseEdge {
@@ -210,6 +317,9 @@ export interface MultiverseMetricsResponse {
   max_depth: number;
   candidate_branches: number;
   branch_budget_pct: number;
+  branch_budget_used: number;
+  branch_budget_limit: number;
+  active_branches_per_tick: number;
 }
 
 export interface PruneRequest {
@@ -437,6 +547,7 @@ export interface QueueInfo {
   active_task_count: number;
   reserved_count: number;
   scheduled_count: number;
+  paused: boolean;
 }
 
 export interface QueuesResponse {

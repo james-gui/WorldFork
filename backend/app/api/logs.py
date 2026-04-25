@@ -10,10 +10,11 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.db import get_session
@@ -92,6 +93,7 @@ async def get_request_logs(
     provider: str | None = Query(default=None),
     status: str | None = Query(default=None),
     run_id: str | None = Query(default=None),
+    universe_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> list[RequestLogItem]:
@@ -102,6 +104,8 @@ async def get_request_logs(
         stmt = stmt.where(LLMCallModel.status == status)
     if run_id:
         stmt = stmt.where(LLMCallModel.run_id == run_id)
+    if universe_id:
+        stmt = stmt.where(LLMCallModel.universe_id == universe_id)
     stmt = stmt.order_by(LLMCallModel.created_at.desc()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     rows = result.scalars().all()
@@ -152,7 +156,7 @@ async def get_webhook_logs(
         ]
     except Exception as exc:
         logger.warning("webhook_events table not available: %s", exc)
-        return []  # TODO: table created by migration 0002_webhooks
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -215,21 +219,46 @@ async def get_error_logs(
 
 
 # ---------------------------------------------------------------------------
-# Audit logs (placeholder)
+# Audit logs
 # ---------------------------------------------------------------------------
 
 
 @router.get(
     "/audit",
     response_model=list[AuditLogItem],
-    summary="List audit log entries (placeholder — B11-A builds audit table)",
+    summary="List audit-style lifecycle log entries",
 )
 async def get_audit_logs(
+    session: _SESSION,
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> list[AuditLogItem]:
-    # TODO: B11-A will create the audit_log table; return empty list for now.
-    return []
+    stmt = select(JobModel).order_by(JobModel.created_at.desc()).limit(limit).offset(offset)
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        AuditLogItem(
+            id=row.job_id,
+            actor="worker",
+            action=f"job.{row.status}",
+            resource=f"job:{row.job_id}",
+            timestamp=row.created_at
+            or row.enqueued_at
+            or row.started_at
+            or row.finished_at
+            or datetime.now(UTC),
+            details={
+                "job_type": row.job_type,
+                "run_id": row.run_id,
+                "universe_id": row.universe_id,
+                "tick": row.tick,
+                "attempt_number": row.attempt_number,
+                "priority": row.priority,
+                "error": row.error,
+            },
+        )
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -240,18 +269,26 @@ async def get_audit_logs(
 @router.get(
     "/traces/{trace_id}",
     response_model=TraceResponse,
-    summary="Get full trace by trace_id (joins LLM calls + jobs on trace_id in payload)",
+    summary="Get full trace by run, universe, LLM call, or job identifier",
 )
 async def get_trace(trace_id: str, session: _SESSION) -> TraceResponse:
-    # LLM calls: trace_id stored in payload JSONB (if present)
     llm_stmt = select(LLMCallModel).where(
-        LLMCallModel.run_id == trace_id
+        or_(
+            LLMCallModel.call_id == trace_id,
+            LLMCallModel.run_id == trace_id,
+            LLMCallModel.universe_id == trace_id,
+        )
     )
     llm_result = await session.execute(llm_stmt)
     llm_rows = llm_result.scalars().all()
 
-    # Also try matching via run_id == trace_id in jobs
-    job_stmt = select(JobModel).where(JobModel.run_id == trace_id)
+    job_stmt = select(JobModel).where(
+        or_(
+            JobModel.job_id == trace_id,
+            JobModel.run_id == trace_id,
+            JobModel.universe_id == trace_id,
+        )
+    )
     job_result = await session.execute(job_stmt)
     job_rows = job_result.scalars().all()
 

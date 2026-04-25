@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { Area, AreaChart, ResponsiveContainer, YAxis } from 'recharts';
-import type { SparkPoint } from '@/lib/mocks/dashboard';
+import type { SparkPoint } from '@/lib/dashboard/types';
 
 interface KpiSparklineProps {
   data: SparkPoint[];

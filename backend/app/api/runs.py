@@ -21,17 +21,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.db import get_session
 from backend.app.core.ids import new_id
 from backend.app.models.runs import BigBangRunModel
+from backend.app.models.results import RunResultModel
 from backend.app.models.universes import UniverseModel
 from backend.app.schemas.api import (
     CreateRunRequest,
     CreateRunResponse,
     PatchRunRequest,
+    RunResultsRegenerateResponse,
+    RunResultsResponse,
     RunDetail,
     RunListItem,
     RunListResponse,
     SoTBundleResponse,
 )
-from backend.app.workers.scheduler import enqueue, make_envelope
+from backend.app.workers.scheduler import enqueue, make_envelope, mark_failed
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -52,6 +55,38 @@ async def _get_run_or_404(run_id: str, session: AsyncSession) -> BigBangRunModel
     return row
 
 
+async def _find_run_by_idempotency_key(
+    session: AsyncSession,
+    idempotency_key: str,
+) -> BigBangRunModel | None:
+    bind = session.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+    if dialect_name == "sqlite":
+        rows = (await session.execute(select(BigBangRunModel))).scalars().all()
+        return next(
+            (
+                row
+                for row in rows
+                if (row.safe_edit_metadata or {}).get("idempotency_key") == idempotency_key
+            ),
+            None,
+        )
+
+    from sqlalchemy import String as SAString
+    from sqlalchemy import cast
+
+    existing_result = await session.execute(
+        select(BigBangRunModel).where(
+            cast(
+                BigBangRunModel.safe_edit_metadata["idempotency_key"],
+                SAString,
+            )
+            == f'"{idempotency_key}"'
+        )
+    )
+    return existing_result.scalar_one_or_none()
+
+
 # ---------------------------------------------------------------------------
 # POST /api/runs
 # ---------------------------------------------------------------------------
@@ -70,25 +105,13 @@ async def create_run(
     """
     # Deduplicate on idempotency key stored in safe_edit_metadata.
     if idempotency_key:
-        # Use a dialect-portable JSON cast (works for both Postgres JSONB and SQLite JSON).
-        from sqlalchemy import String as SAString
-        from sqlalchemy import cast
-
-        existing_result = await session.execute(
-            select(BigBangRunModel).where(
-                cast(
-                    BigBangRunModel.safe_edit_metadata["idempotency_key"],
-                    SAString,
-                )
-                == f'"{idempotency_key}"'
-            )
-        )
-        existing = existing_result.scalar_one_or_none()
+        existing = await _find_run_by_idempotency_key(session, idempotency_key)
         if existing is not None:
             return CreateRunResponse(
                 run_id=existing.big_bang_id,
                 root_universe_id=existing.root_universe_id,
                 status=existing.status,
+                enqueued=existing.status not in {"failed", "draft"},
             )
 
     big_bang_id = new_id("run")
@@ -103,7 +126,7 @@ async def create_run(
         display_name=body.display_name,
         scenario_text=body.scenario_text,
         input_file_ids=list(body.uploaded_doc_ids),
-        status="draft",
+        status="initializing",
         time_horizon_label=body.time_horizon_label,
         tick_duration_minutes=body.tick_duration_minutes,
         max_ticks=body.max_ticks,
@@ -130,21 +153,41 @@ async def create_run(
             "max_ticks": body.max_ticks,
             "max_schedule_horizon_ticks": body.max_schedule_horizon_ticks,
             "uploaded_doc_ids": list(body.uploaded_doc_ids),
+            "uploaded_docs": [
+                {
+                    "name": doc_id,
+                    "content_text": "",
+                    "content_type": "uploaded_doc_id",
+                }
+                for doc_id in body.uploaded_doc_ids
+            ],
             "provider_snapshot_id": body.provider_snapshot_id,
             "root_universe_id": root_universe_id,
         },
         idempotency_key=idempotency_key,
     )
+    enqueued = False
+    enqueue_error: str | None = None
     try:
         await enqueue(envelope)
-    except Exception:
-        # Celery may not be running in test environments; swallow gracefully.
-        pass
+        enqueued = True
+    except Exception as exc:
+        enqueue_error = str(exc)
+        run.status = "failed"
+        run.safe_edit_metadata = {
+            **safe_meta,
+            "failure_reason": f"initializer enqueue failed: {enqueue_error[:500]}",
+        }
+        await session.commit()
 
     return CreateRunResponse(
         run_id=big_bang_id,
         root_universe_id=root_universe_id,
-        status="draft",
+        status="initializing" if enqueued else "failed",
+        job_id=envelope.job_id,
+        enqueued=enqueued,
+        degraded=not enqueued,
+        error=enqueue_error,
     )
 
 
@@ -180,6 +223,31 @@ async def list_runs(
     stmt = stmt.order_by(BigBangRunModel.created_at.desc()).limit(limit).offset(offset)
     rows_result = await session.execute(stmt)
     rows = rows_result.scalars().all()
+    run_ids = [r.big_bang_id for r in rows]
+
+    total_counts: dict[str, int] = {}
+    active_counts: dict[str, int] = {}
+    if run_ids:
+        total_rows = (
+            await session.execute(
+                select(UniverseModel.big_bang_id, func.count(UniverseModel.universe_id))
+                .where(UniverseModel.big_bang_id.in_(run_ids))
+                .group_by(UniverseModel.big_bang_id)
+            )
+        ).all()
+        total_counts = {run_id: int(count) for run_id, count in total_rows}
+
+        active_rows = (
+            await session.execute(
+                select(UniverseModel.big_bang_id, func.count(UniverseModel.universe_id))
+                .where(
+                    UniverseModel.big_bang_id.in_(run_ids),
+                    UniverseModel.status == "active",
+                )
+                .group_by(UniverseModel.big_bang_id)
+            )
+        ).all()
+        active_counts = {run_id: int(count) for run_id, count in active_rows}
 
     items = [
         RunListItem(
@@ -195,6 +263,8 @@ async def list_runs(
             favorite=bool((r.safe_edit_metadata or {}).get("favorite", False)),
             archived=bool((r.safe_edit_metadata or {}).get("archived", False)),
             root_universe_id=r.root_universe_id,
+            active_universe_count=active_counts.get(r.big_bang_id, 0),
+            total_universe_count=total_counts.get(r.big_bang_id, 0),
         )
         for r in rows
     ]
@@ -212,17 +282,7 @@ async def get_run(run_id: str, session: DbSession) -> RunDetail:
     """Return detailed information about a single run."""
     run = await _get_run_or_404(run_id, session)
 
-    # Count universes by status.
-    select(
-        func.count(UniverseModel.universe_id).label("total"),
-        func.count(
-            UniverseModel.universe_id.op("FILTER")(
-                UniverseModel.status == "active"
-            )
-        ).label("active"),
-    ).where(UniverseModel.big_bang_id == run_id)
-
-    # Simpler cross-DB approach: two separate counts.
+    # Cross-DB approach: two separate counts.
     total_stmt = select(func.count(UniverseModel.universe_id)).where(
         UniverseModel.big_bang_id == run_id
     )
@@ -266,6 +326,81 @@ async def get_run(run_id: str, session: DbSession) -> RunDetail:
         total_universe_count=total_count,
         latest_metrics=root_metrics,
         safe_edit_metadata=meta,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/runs/{run_id}/results
+# ---------------------------------------------------------------------------
+
+
+def _result_to_response(row: RunResultModel) -> RunResultsResponse:
+    return RunResultsResponse(
+        run_id=row.run_id,
+        status=row.status,
+        generated_at=row.generated_at,
+        provider=row.provider,
+        model_used=row.model_used,
+        summary=row.summary,
+        classifications=dict(row.classifications or {}),
+        branch_clusters=list(row.branch_clusters or []),
+        universe_outcomes=list(row.universe_outcomes or []),
+        timeline_highlights=list(row.timeline_highlights or []),
+        metrics=dict(row.metrics or {}),
+        artifact_path=row.artifact_path,
+        error=row.error,
+        job_id=row.job_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/{run_id}/results", response_model=RunResultsResponse)
+async def get_run_results(run_id: str, session: DbSession) -> RunResultsResponse:
+    """Return the current run-level results aggregation state."""
+    await _get_run_or_404(run_id, session)
+    row = await session.get(RunResultModel, run_id)
+    if row is None:
+        return RunResultsResponse(
+            run_id=run_id,
+            status="not_started",
+            summary=None,
+        )
+    return _result_to_response(row)
+
+
+@router.post("/{run_id}/results/regenerate", status_code=202, response_model=RunResultsRegenerateResponse)
+async def regenerate_run_results(run_id: str, session: DbSession) -> RunResultsRegenerateResponse:
+    """Queue a god-tier results aggregation job for this run."""
+    await _get_run_or_404(run_id, session)
+    envelope = make_envelope(
+        job_type="aggregate_run_results",
+        run_id=run_id,
+        payload={"run_id": run_id, "reason": "manual_regenerate"},
+        idempotency_key=f"aggregate_run_results:{run_id}:manual:{new_id('regen')}",
+    )
+    row = await session.get(RunResultModel, run_id)
+    if row is None:
+        row = RunResultModel(
+            run_id=run_id,
+            status="pending",
+            classifications={},
+            branch_clusters=[],
+            universe_outcomes=[],
+            timeline_highlights=[],
+            metrics={},
+        )
+        session.add(row)
+    row.status = "pending"
+    row.error = None
+    row.job_id = envelope.job_id
+    await session.commit()
+    await enqueue(envelope)
+    return RunResultsRegenerateResponse(
+        run_id=run_id,
+        job_id=envelope.job_id,
+        status="queued",
+        enqueued=True,
     )
 
 
@@ -373,12 +508,24 @@ async def export_run(run_id: str, session: DbSession) -> dict:
         payload={"run_id": run_id},
     )
     job_id = envelope.job_id
+    enqueued = False
+    enqueue_error: str | None = None
     try:
         await enqueue(envelope)
-    except Exception:
-        pass
+        enqueued = True
+    except Exception as exc:
+        enqueue_error = str(exc)
+        await mark_failed(job_id, f"export enqueue failed: {enqueue_error}")
 
-    return {"job_id": job_id, "status": "queued"}
+    if not enqueued:
+        return {
+            "job_id": job_id,
+            "status": "failed",
+            "enqueued": False,
+            "error": enqueue_error,
+        }
+
+    return {"job_id": job_id, "status": "queued", "enqueued": True}
 
 
 # ---------------------------------------------------------------------------

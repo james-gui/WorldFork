@@ -72,6 +72,16 @@ def _job_to_info(row: JobModel) -> JobInfo:
 
 @router.get("/queues", response_model=QueuesResponse, summary="Queue depths and active task counts")
 async def get_queues() -> QueuesResponse:
+    paused: dict[str, bool] = {}
+    try:
+        from backend.app.core.redis_client import get_redis_client
+
+        redis = get_redis_client()
+        for q in _KNOWN_QUEUES:
+            paused[q] = bool(await redis.exists(f"queue_paused:{q}"))
+    except Exception:
+        paused = {q: False for q in _KNOWN_QUEUES}
+
     try:
         from backend.app.workers.celery_app import celery_app
 
@@ -106,6 +116,7 @@ async def get_queues() -> QueuesResponse:
                 active_task_count=queue_active.get(q, 0),
                 reserved_count=queue_reserved.get(q, 0),
                 scheduled_count=queue_scheduled.get(q, 0),
+                paused=paused.get(q, False),
             )
             for q in _KNOWN_QUEUES
         ]
@@ -114,7 +125,13 @@ async def get_queues() -> QueuesResponse:
     except Exception as exc:
         logger.warning("Celery inspect failed (broker unreachable?): %s", exc)
         queues = [
-            QueueInfo(name=q, active_task_count=0, reserved_count=0, scheduled_count=0)
+            QueueInfo(
+                name=q,
+                active_task_count=0,
+                reserved_count=0,
+                scheduled_count=0,
+                paused=paused.get(q, False),
+            )
             for q in _KNOWN_QUEUES
         ]
         return QueuesResponse(queues=queues, degraded=True, error=str(exc))
@@ -229,29 +246,40 @@ async def retry_job(job_id: str, session: _SESSION, body: RetryRequest | None = 
     new_idempotency_key = f"{row.idempotency_key}:retry:{new_attempt}"
     target_queue = (body.queue if body and body.queue else row.priority) or "p1"
 
-    # Enqueue via Celery; fall back gracefully if broker is unreachable
-    new_task_id = f"retry-{job_id}-{new_attempt}"
     try:
-        from backend.app.workers.celery_app import celery_app
-        task_result = celery_app.send_task(
-            row.job_type,
-            args=[],
-            kwargs={"job_envelope_json": str(row.payload)},
-            queue=target_queue,
-        )
-        new_task_id = task_result.id
+        from backend.app.workers.queues import Queues
+
+        queue_override = Queues(target_queue)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown queue {target_queue!r}.",
+        ) from exc
+
+    from backend.app.workers.scheduler import enqueue, make_envelope
+
+    envelope = make_envelope(
+        job_type=row.job_type,  # type: ignore[arg-type]
+        run_id=row.run_id,
+        universe_id=row.universe_id,
+        tick=row.tick,
+        payload=dict(row.payload or {}),
+        idempotency_key=new_idempotency_key,
+        attempt_number=new_attempt,
+        priority_override=queue_override,
+    )
+    try:
+        await enqueue(envelope)
     except Exception as exc:
+        # mark_enqueued runs before Celery dispatch, so the retry remains
+        # visible even when the broker is temporarily unavailable.
         logger.warning("Could not enqueue retry (broker unavailable): %s", exc)
 
-    # Update DB record
-    row.attempt_number = new_attempt
-    row.status = "queued"
-    row.error = None
-    row.idempotency_key = new_idempotency_key
+    row.status = "retried"
     await session.commit()
 
     return RetryResponse(
-        new_task_id=new_task_id,
+        new_task_id=envelope.job_id,
         job_id=job_id,
         attempt_number=new_attempt,
     )
@@ -274,9 +302,8 @@ async def cancel_job(job_id: str, session: _SESSION) -> CancelResponse:
     # Advisory revoke — ignore broker errors
     try:
         from backend.app.workers.celery_app import celery_app
-        # Use the idempotency_key as the task_id fallback if no task_id on row
-        task_id = getattr(row, "task_id", None) or row.idempotency_key
-        celery_app.control.revoke(task_id, terminate=False)
+
+        celery_app.control.revoke(row.job_id, terminate=False)
     except Exception as exc:
         logger.warning("Could not revoke task for job %s: %s", job_id, exc)
 

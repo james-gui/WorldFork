@@ -33,10 +33,16 @@ const TICK_OPTIONS = [
 
 const PROVIDER_OPTIONS = [
   { value: 'openrouter', label: 'OpenRouter' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'ollama', label: 'Ollama (local)' },
 ];
+
+const TICK_DURATION_MINUTES: Record<string, number> = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+  '1h': 60,
+  '4h': 240,
+  '1d': 1440,
+};
 
 interface AttachedFile {
   name: string;
@@ -50,23 +56,7 @@ function formatFileSize(kb: number): string {
 }
 
 function deriveTimeHorizon(ticks: number, tickDuration: string): string {
-  const map: Record<string, { amount: number; unit: string }> = {
-    '1m': { amount: 1, unit: 'minute' },
-    '5m': { amount: 5, unit: 'minutes' },
-    '15m': { amount: 15, unit: 'minutes' },
-    '1h': { amount: 1, unit: 'hour' },
-    '4h': { amount: 4, unit: 'hours' },
-    '1d': { amount: 1, unit: 'day' },
-  };
-  const td = map[tickDuration] ?? { amount: 1, unit: 'day' };
-  const totalMinutes = ticks * td.amount * (
-    tickDuration === '1m' ? 1 :
-    tickDuration === '5m' ? 5 :
-    tickDuration === '15m' ? 15 :
-    tickDuration === '1h' ? 60 :
-    tickDuration === '4h' ? 240 :
-    1440
-  );
+  const totalMinutes = ticks * (TICK_DURATION_MINUTES[tickDuration] ?? 1440);
   if (totalMinutes < 60) return `${totalMinutes} minutes`;
   if (totalMinutes < 1440) return `${Math.round(totalMinutes / 60)} hours`;
   if (totalMinutes < 43200) return `${Math.round(totalMinutes / 1440)} days`;
@@ -332,6 +322,7 @@ export function Step1Scenario() {
                 </p>
               </div>
               <Switch
+                aria-label="Standard QSA mode"
                 checked={qsaMode ?? true}
                 onCheckedChange={(v) => setValue('qsaMode', v)}
               />
@@ -346,6 +337,7 @@ export function Step1Scenario() {
                 </p>
               </div>
               <Switch
+                aria-label="Auto-fanout enabled"
                 checked={autoFanout ?? true}
                 onCheckedChange={(v) => setValue('autoFanout', v)}
               />

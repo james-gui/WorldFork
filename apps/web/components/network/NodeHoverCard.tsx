@@ -1,10 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import {
-  ARCHETYPES,
-  type NetworkNodeAttrs,
-} from '@/lib/network/seededDataset';
+import type { NetworkNodeAttrs } from '@/lib/network/types';
 
 interface Props {
   attrs: NetworkNodeAttrs;
@@ -13,7 +10,6 @@ interface Props {
 }
 
 export function NodeHoverCard({ attrs, x, y }: Props) {
-  const archetype = ARCHETYPES.find((a) => a.key === attrs.archetype);
   return (
     <div
       className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+12px)] min-w-[200px] rounded-lg border bg-popover p-3 shadow-md text-xs"
@@ -22,7 +18,7 @@ export function NodeHoverCard({ attrs, x, y }: Props) {
       <div className="flex items-center gap-2 mb-1">
         <span
           className="size-2.5 rounded-full"
-          style={{ background: archetype?.color }}
+          style={{ background: attrs.color }}
         />
         <span className="font-semibold truncate">{attrs.label}</span>
       </div>

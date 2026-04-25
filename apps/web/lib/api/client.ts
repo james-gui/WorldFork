@@ -16,14 +16,34 @@ export class ApiError extends Error {
   }
 }
 
-// Token getter — placeholder until auth lands
+// Token getter used by authenticated deployments.
 let getToken: () => string | undefined = () => undefined;
 
 export function setTokenGetter(fn: () => string | undefined) {
   getToken = fn;
 }
 
-const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8003';
+
+function errorMessageFromBody(body: Record<string, unknown>, fallback: string): string {
+  if (typeof body.message === 'string') return body.message;
+  if (typeof body.detail === 'string') return body.detail;
+  if (Array.isArray(body.detail)) {
+    return body.detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return JSON.stringify(item);
+      })
+      .join('; ');
+  }
+  if (body.detail && typeof body.detail === 'object') {
+    return JSON.stringify(body.detail);
+  }
+  return fallback;
+}
 
 // Typed fetch client
 export const apiClient = createClient<paths>({
@@ -52,7 +72,7 @@ apiClient.use({
       }
       throw new ApiError({
         status: response.status,
-        message: (body.message as string) ?? response.statusText,
+        message: errorMessageFromBody(body, response.statusText),
         code: body.code as string | undefined,
         traceId: body.trace_id as string | undefined,
       });
@@ -86,10 +106,17 @@ export async function apiFetch<T = unknown>(
     }
     throw new ApiError({
       status: res.status,
-      message: (body.message as string) ?? res.statusText,
+      message: errorMessageFromBody(body, res.statusText),
       code: body.code as string | undefined,
       traceId: body.trace_id as string | undefined,
     });
   }
-  return res.json() as Promise<T>;
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }

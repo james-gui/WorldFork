@@ -17,7 +17,7 @@ import { SoTSnapshotsCard } from '@/components/settings/SoTSnapshotsCard';
 import { MemoryCard } from '@/components/settings/MemoryCard';
 import { OASISAdapterCard } from '@/components/settings/OASISAdapterCard';
 import { PreferencesCard } from '@/components/settings/PreferencesCard';
-import { usePatchSettings } from '@/lib/api/settings';
+import { usePatchProviders, usePatchSettings, useProviders, useSettings } from '@/lib/api/settings';
 
 const settingsSchema = z.object({
   // Backend provider
@@ -25,7 +25,7 @@ const settingsSchema = z.object({
   baseUrl: z.string().default('https://openrouter.ai/api/v1'),
   apiKeyEnv: z.string().default('OPENROUTER_API_KEY'),
   // Models
-  defaultModel: z.string().default('openai/gpt-4o'),
+  defaultModel: z.string().default('deepseek/deepseek-v3.2'),
   fallbackModel: z.string().default('openai/gpt-4o-mini'),
   capabilityTest: z.boolean().default(false),
   toolCalling: z.boolean().default(true),
@@ -42,8 +42,8 @@ const settingsSchema = z.object({
   // SoT
   sotApplyPerRun: z.boolean().default(true),
   // Memory
-  memoryProvider: z.string().default('zep'),
-  memoryMode: z.string().default('hybrid'),
+  memoryProvider: z.string().default('local_ledger'),
+  memoryMode: z.string().default('local'),
   memoryCacheTtl: z.number().default(30),
   // OASIS
   oasisEnabled: z.boolean().default(false),
@@ -71,8 +71,23 @@ function scrollTo(id: string) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 export default function SettingsPage() {
   const { mutateAsync, isPending } = usePatchSettings();
+  const { mutateAsync: patchProviders, isPending: providersPending } = usePatchProviders();
+  const { data: settingsData } = useSettings();
+  const { data: providersData } = useProviders();
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
@@ -81,15 +96,86 @@ export default function SettingsPage() {
 
   const isDirty = form.formState.isDirty;
 
+  React.useEffect(() => {
+    if (isDirty) return;
+    const provider = providersData?.providers.find((row) => row.provider === 'openrouter')
+      ?? providersData?.providers[0];
+    const payload = settingsData?.payload ?? {};
+    const preferences = payload.preferences && typeof payload.preferences === 'object'
+      ? payload.preferences as Record<string, unknown>
+      : {};
+    form.reset(settingsSchema.parse({
+      provider: provider?.provider ?? stringValue(payload.provider),
+      baseUrl: provider?.base_url ?? stringValue(payload.base_url),
+      apiKeyEnv: provider?.api_key_env ?? stringValue(payload.api_key_env),
+      defaultModel: provider?.default_model ?? stringValue(payload.default_model),
+      fallbackModel: provider?.fallback_model ?? stringValue(payload.fallback_model),
+      toolCalling: provider?.tool_calling_enabled ?? booleanValue(payload.tool_calling),
+      structuredOutput: provider?.json_mode_required ?? booleanValue(payload.structured_output),
+      temperature: numberValue(payload.temperature),
+      topP: numberValue(payload.top_p),
+      maxOutputTokens: numberValue(payload.max_output_tokens),
+      contextWindowTokens: numberValue(payload.context_window_tokens),
+      sotApplyPerRun: booleanValue(payload.sot_apply_per_run),
+      memoryProvider: stringValue(payload.memory_provider),
+      memoryMode: stringValue(payload.memory_mode),
+      memoryCacheTtl: numberValue(payload.memory_cache_ttl),
+      oasisEnabled: settingsData?.enable_oasis_adapter,
+      theme: settingsData?.theme,
+      dateFormat: stringValue(preferences.date_format),
+      tickClockDisplay: stringValue(preferences.tick_clock_display),
+    }));
+  }, [form, isDirty, providersData, settingsData]);
+
   const onSubmit = async (values: SettingsFormValues) => {
     try {
-      // Stub: simulate a 200ms save
-      await new Promise<void>((resolve) => setTimeout(resolve, 200));
-      void mutateAsync(values).catch(() => {});
+      await patchProviders({
+        providers: [
+          {
+            provider: values.provider,
+            base_url: values.baseUrl,
+            api_key_env: values.apiKeyEnv,
+            default_model: values.defaultModel,
+            fallback_model: values.fallbackModel,
+            json_mode_required: values.structuredOutput,
+            tool_calling_enabled: values.toolCalling,
+            enabled: true,
+            extra_headers: {},
+            payload: {
+              source: 'settings_overview',
+            },
+          },
+        ],
+      });
+      await mutateAsync({
+        default_max_ticks: 180,
+        default_tick_duration_minutes: 1440,
+        theme: values.theme,
+        enable_oasis_adapter: values.oasisEnabled,
+        payload: {
+          provider: values.provider,
+          base_url: values.baseUrl,
+          api_key_env: values.apiKeyEnv,
+          default_model: values.defaultModel,
+          fallback_model: values.fallbackModel,
+          temperature: values.temperature,
+          top_p: values.topP,
+          max_output_tokens: values.maxOutputTokens,
+          context_window_tokens: values.contextWindowTokens,
+          sot_apply_per_run: values.sotApplyPerRun,
+          memory_provider: values.memoryProvider,
+          memory_mode: values.memoryMode,
+          zep_enabled: false,
+          preferences: {
+            date_format: values.dateFormat,
+            tick_clock_display: values.tickClockDisplay,
+          },
+        },
+      });
       form.reset(values);
       toast.success('Settings saved successfully.');
-    } catch {
-      toast.error('Failed to save settings.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save settings.');
     }
   };
 
@@ -147,7 +233,7 @@ export default function SettingsPage() {
                   <RotateCcw className="h-3.5 w-3.5" />
                   Reset to Default
                 </Button>
-                <Button type="submit" size="sm" className="gap-1.5" disabled={isPending}>
+                <Button type="submit" size="sm" className="gap-1.5" disabled={isPending || providersPending}>
                   <Save className="h-3.5 w-3.5" />
                   Save Changes
                 </Button>
@@ -173,7 +259,7 @@ export default function SettingsPage() {
           visible={isDirty}
           onSave={form.handleSubmit(onSubmit)}
           onDiscard={onDiscard}
-          isLoading={isPending}
+          isLoading={isPending || providersPending}
         />
       </form>
     </FormProvider>

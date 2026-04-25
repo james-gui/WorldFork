@@ -3,29 +3,52 @@
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { useLogs } from '@/lib/api/logs';
+import { useRateLimits } from '@/lib/api/settings';
 
 interface ProviderQuota {
   name: string;
   used: number; // percentage 0–100
-  color: string;
+  tokens: number;
+  capacity: number;
 }
 
-const QUOTA_DATA: ProviderQuota[] = [
-  { name: 'OpenRouter', used: 68, color: 'bg-blue-500' },
-  { name: 'OpenAI', used: 12, color: 'bg-green-500' },
-  { name: 'Anthropic', used: 5, color: 'bg-purple-500' },
-  { name: 'Ollama', used: 0, color: 'bg-gray-400' },
-];
-
 export function QuotaPressureCard() {
+  const { data: logs = [] } = useLogs({ limit: 1000 });
+  const { data: rateLimits } = useRateLimits();
+
+  const rows = React.useMemo<ProviderQuota[]>(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const tokensByProvider = new Map<string, number>();
+    for (const log of logs) {
+      const createdAt = new Date(log.created_at);
+      if (Number.isNaN(createdAt.getTime()) || createdAt < start) continue;
+      tokensByProvider.set(log.provider, (tokensByProvider.get(log.provider) ?? 0) + log.total_tokens);
+    }
+
+    return (rateLimits?.rate_limits ?? []).map((limit) => {
+      const tokens = tokensByProvider.get(limit.provider) ?? 0;
+      const capacity = Math.max(0, limit.tpm_limit * 60 * 24);
+      const used = capacity > 0 ? Math.min(100, Math.round((tokens / capacity) * 100)) : 0;
+      return {
+        name: limit.provider,
+        used,
+        tokens,
+        capacity,
+      };
+    });
+  }, [logs, rateLimits]);
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Quota Pressure</CardTitle>
-        <p className="text-xs text-muted-foreground">Daily token budget used per provider</p>
+        <p className="text-xs text-muted-foreground">Tokens used today vs configured TPM capacity</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {QUOTA_DATA.map((p) => (
+        {rows.map((p) => (
           <div key={p.name} className="space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">{p.name}</span>
@@ -45,8 +68,16 @@ export function QuotaPressureCard() {
               value={p.used}
               className="h-1.5"
             />
+            <p className="text-[10px] text-muted-foreground font-mono">
+              {p.tokens.toLocaleString()} / {p.capacity.toLocaleString()} tokens
+            </p>
           </div>
         ))}
+        {rows.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">
+            No provider rate limits have been configured.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

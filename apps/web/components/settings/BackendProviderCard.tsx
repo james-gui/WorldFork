@@ -22,7 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-const PROVIDERS = ['OpenRouter', 'OpenAI', 'Anthropic', 'Ollama'] as const;
+const PROVIDERS = ['OpenRouter'] as const;
 
 export function BackendProviderCard() {
   const form = useFormContext();

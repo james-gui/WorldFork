@@ -22,11 +22,13 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
 const MODELS = [
-  'openai/gpt-4o',
+  'google/gemini-3.1-flash-lite-preview',
+  'deepseek/deepseek-v3.2',
+  'deepseek/deepseek-v4-pro',
+  'deepseek/deepseek-v4-flash',
+  'openai/gpt-5.5',
+  'openai/gpt-5.4',
   'openai/gpt-4o-mini',
-  'anthropic/claude-3-5-sonnet',
-  'anthropic/claude-3-haiku',
-  'google/gemini-pro',
 ] as const;
 
 interface ToggleRowProps {

@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { NetworkDataset } from '@/lib/network/seededDataset';
+import type { NetworkDataset } from '@/lib/network/types';
 
 // Sigma + graphology are browser-only — load via dynamic import w/ ssr: false.
 const NetworkGraphImpl = dynamic(() => import('./NetworkGraphImpl'), {

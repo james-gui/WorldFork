@@ -20,6 +20,7 @@ interface SessionHeaderProps {
 }
 
 export function SessionHeader({ run, onRename }: SessionHeaderProps) {
+  const rootUniverseId = run.root_universe_id ?? run.big_bang_id;
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
       {/* Left: title + status */}
@@ -31,7 +32,7 @@ export function SessionHeader({ run, onRename }: SessionHeaderProps) {
       {/* Right: action buttons */}
       <div className="flex items-center gap-2 flex-shrink-0">
         <Button asChild variant="default" size="sm" className="bg-brand-600 hover:bg-brand-700 text-white gap-1.5">
-          <Link href={`/runs/${run.id}/universes/U000/review`}>
+          <Link href={`/runs/${run.id}/universes/${rootUniverseId}/review`}>
             <Eye className="h-4 w-4" />
             Open Review Mode
           </Link>

@@ -52,9 +52,9 @@ class OpenRouterProvider(BaseProvider):
         *,
         api_key: str,
         base_url: str = "https://openrouter.ai/api/v1",
-        default_model: str = "openai/gpt-4o",
+        default_model: str = "deepseek/deepseek-v3.2",
         fallback_model: str | None = "openai/gpt-4o-mini",
-        http_referer: str = "http://localhost:3000",
+        http_referer: str = "http://localhost:3003",
         x_title: str = "WorldFork",
         request_timeout: float = 120.0,
     ) -> None:

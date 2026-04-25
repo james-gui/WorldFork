@@ -3,10 +3,10 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { EventQueueMini } from './EventQueueMini';
-import type { DashboardMockData } from '@/lib/mocks/dashboard';
+import type { DashboardOverviewData } from '@/lib/dashboard/types';
 
 interface MultiverseOverviewCardProps {
-  data: DashboardMockData;
+  data: DashboardOverviewData;
 }
 
 export function MultiverseOverviewCard({ data }: MultiverseOverviewCardProps) {

@@ -7,33 +7,53 @@ interface Subscription {
   handler: Handler;
 }
 
+interface Connection {
+  ws: WebSocket | null;
+  url: string;
+  refCount: number;
+  reconnectDelay: number;
+  shouldReconnect: boolean;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+}
+
 const BASE_DELAY = 1000;
 const MAX_DELAY = 30_000;
 
 export class WSClient {
-  private ws: WebSocket | null = null;
-  private url: string | null = null;
+  private connections = new Map<string, Connection>();
   private subscriptions: Subscription[] = [];
-  private reconnectDelay = BASE_DELAY;
-  private shouldReconnect = true;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(url: string, token?: string) {
     const fullUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
-    this.url = fullUrl;
-    this.shouldReconnect = true;
-    this._open(fullUrl);
+    const existing = this.connections.get(fullUrl);
+    if (existing) {
+      existing.refCount += 1;
+      existing.shouldReconnect = true;
+      return fullUrl;
+    }
+
+    const connection: Connection = {
+      ws: null,
+      url: fullUrl,
+      refCount: 1,
+      reconnectDelay: BASE_DELAY,
+      shouldReconnect: true,
+      reconnectTimer: null,
+    };
+    this.connections.set(fullUrl, connection);
+    this._open(connection);
+    return fullUrl;
   }
 
-  private _open(url: string) {
+  private _open(connection: Connection) {
     if (typeof window === 'undefined') return;
-    this.ws = new WebSocket(url);
+    connection.ws = new WebSocket(connection.url);
 
-    this.ws.onopen = () => {
-      this.reconnectDelay = BASE_DELAY;
+    connection.ws.onopen = () => {
+      connection.reconnectDelay = BASE_DELAY;
     };
 
-    this.ws.onmessage = (event: MessageEvent) => {
+    connection.ws.onmessage = (event: MessageEvent) => {
       try {
         const msg = JSON.parse(event.data as string);
         const topic: string = msg.topic ?? msg.type ?? '';
@@ -47,17 +67,17 @@ export class WSClient {
       }
     };
 
-    this.ws.onclose = () => {
-      if (this.shouldReconnect && this.url) {
-        this.reconnectTimer = setTimeout(() => {
-          this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_DELAY);
-          if (this.url) this._open(this.url);
-        }, this.reconnectDelay);
+    connection.ws.onclose = () => {
+      if (connection.shouldReconnect) {
+        connection.reconnectTimer = setTimeout(() => {
+          connection.reconnectDelay = Math.min(connection.reconnectDelay * 2, MAX_DELAY);
+          this._open(connection);
+        }, connection.reconnectDelay);
       }
     };
 
-    this.ws.onerror = () => {
-      this.ws?.close();
+    connection.ws.onerror = () => {
+      connection.ws?.close();
     };
   }
 
@@ -69,14 +89,30 @@ export class WSClient {
     };
   }
 
-  close() {
-    this.shouldReconnect = false;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+  disconnect(url: string) {
+    const connection = this.connections.get(url);
+    if (!connection) return;
+    connection.refCount -= 1;
+    if (connection.refCount > 0) return;
+    connection.shouldReconnect = false;
+    if (connection.reconnectTimer) {
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
     }
-    this.ws?.close();
-    this.ws = null;
+    connection.ws?.close();
+    this.connections.delete(url);
+  }
+
+  close() {
+    for (const connection of this.connections.values()) {
+      connection.shouldReconnect = false;
+      if (connection.reconnectTimer) {
+        clearTimeout(connection.reconnectTimer);
+        connection.reconnectTimer = null;
+      }
+      connection.ws?.close();
+    }
+    this.connections.clear();
     this.subscriptions = [];
   }
 }

@@ -11,14 +11,20 @@ import {
 } from '@/components/ui/select';
 import { BrainCircuit, ArrowRight } from 'lucide-react';
 
-export type MemoryMode = 'perpetual' | 'session' | 'message_window';
+export type MemoryMode = 'local_ledger' | 'perpetual' | 'session' | 'message_window';
 
 interface ZepMemoryMapCardProps {
   mode?: MemoryMode;
   onModeChange?: (mode: MemoryMode) => void;
+  disabled?: boolean;
 }
 
 const MODE_DIAGRAMS: Record<MemoryMode, { from: string; to: string; label: string }[]> = {
+  local_ledger: [
+    { from: 'Cohort', to: 'Run ledger', label: 'summary.jsonl' },
+    { from: 'Hero', to: 'Run ledger', label: 'memory.jsonl' },
+    { from: 'Run', to: 'Artifacts', label: 'ticks/*' },
+  ],
   perpetual: [
     { from: 'Cohort', to: 'Zep User', label: 'user_id' },
     { from: 'Hero', to: 'Zep User', label: 'user_id' },
@@ -36,7 +42,7 @@ const MODE_DIAGRAMS: Record<MemoryMode, { from: string; to: string; label: strin
   ],
 };
 
-export function ZepMemoryMapCard({ mode = 'perpetual', onModeChange }: ZepMemoryMapCardProps) {
+export function ZepMemoryMapCard({ mode = 'local_ledger', onModeChange, disabled = false }: ZepMemoryMapCardProps) {
   const mappings = MODE_DIAGRAMS[mode];
 
   return (
@@ -50,11 +56,12 @@ export function ZepMemoryMapCard({ mode = 'perpetual', onModeChange }: ZepMemory
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
           <Label className="text-xs">Memory mode</Label>
-          <Select value={mode} onValueChange={(v) => onModeChange?.(v as MemoryMode)}>
+          <Select value={mode} onValueChange={(v) => onModeChange?.(v as MemoryMode)} disabled={disabled}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="local_ledger">Local ledger summaries</SelectItem>
               <SelectItem value="perpetual">Perpetual (graph + summaries)</SelectItem>
               <SelectItem value="session">Session-scoped</SelectItem>
               <SelectItem value="message_window">Message window</SelectItem>

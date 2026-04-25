@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X } from 'lucide-react';
+import { useTestWebhook } from '@/lib/api/logs';
 
 const schema = z.object({
   url: z.string().url('Must be a valid URL'),
@@ -42,9 +42,11 @@ interface WebhookEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial?: Partial<WebhookFormValues>;
+  onSubmitted?: () => void;
 }
 
-export function WebhookEditDialog({ open, onOpenChange, initial }: WebhookEditDialogProps) {
+export function WebhookEditDialog({ open, onOpenChange, initial, onSubmitted }: WebhookEditDialogProps) {
+  const testWebhook = useTestWebhook();
   const form = useForm<WebhookFormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -56,6 +58,15 @@ export function WebhookEditDialog({ open, onOpenChange, initial }: WebhookEditDi
 
   const selectedEvents = form.watch('events');
 
+  React.useEffect(() => {
+    if (!open) return;
+    form.reset({
+      url: initial?.url ?? '',
+      secret: initial?.secret ?? '',
+      events: initial?.events ?? [],
+    });
+  }, [form, initial, open]);
+
   const toggleEvent = (evt: string) => {
     const cur = form.getValues('events');
     form.setValue(
@@ -66,17 +77,32 @@ export function WebhookEditDialog({ open, onOpenChange, initial }: WebhookEditDi
   };
 
   const onSubmit = async (values: WebhookFormValues) => {
-    await new Promise((r) => setTimeout(r, 200));
-    toast.success('Webhook saved.');
-    console.info('webhook:', values);
-    onOpenChange(false);
+    try {
+      const result = await testWebhook.mutateAsync({
+        url: values.url,
+        secret: values.secret,
+        event_type: values.events[0],
+        payload: {
+          source: 'settings.integrations',
+          subscribed_events: values.events,
+        },
+      });
+      if (!result.ok) {
+        throw new Error(result.error ?? 'Webhook test failed.');
+      }
+      toast.success('Webhook test delivered.');
+      onSubmitted?.();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Webhook test failed.');
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Webhook</DialogTitle>
+          <DialogTitle>Test Webhook</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -100,7 +126,7 @@ export function WebhookEditDialog({ open, onOpenChange, initial }: WebhookEditDi
                 <FormItem>
                   <FormLabel className="text-xs">Secret</FormLabel>
                   <FormControl>
-                    <Input {...field} type="password" placeholder="whsec_…" className="text-xs font-mono" />
+                    <Input {...field} type="password" placeholder="whsec_..." className="text-xs font-mono" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -137,7 +163,9 @@ export function WebhookEditDialog({ open, onOpenChange, initial }: WebhookEditDi
               <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm">Save webhook</Button>
+              <Button type="submit" size="sm" disabled={testWebhook.isPending}>
+                {testWebhook.isPending ? 'Sending...' : 'Send test webhook'}
+              </Button>
             </DialogFooter>
           </form>
         </Form>

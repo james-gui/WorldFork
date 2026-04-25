@@ -2,31 +2,86 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { RotateCcw, Save, Import } from 'lucide-react';
+import { RotateCcw, Save } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { RoutingPoliciesTable } from '@/components/routing/RoutingPoliciesTable';
+import {
+  DEFAULT_ROUTING_ROWS,
+  isGodTierJobType,
+  RoutingPoliciesTable,
+  type RoutingPolicyRow,
+} from '@/components/routing/RoutingPoliciesTable';
 import { GlobalRoutingSettingsCard } from '@/components/routing/GlobalRoutingSettingsCard';
 import { RoutingUsageCard } from '@/components/routing/RoutingUsageCard';
 import { QuotaPressureCard } from '@/components/routing/QuotaPressureCard';
 import { CostBurnCard } from '@/components/routing/CostBurnCard';
 import { AlertsCard } from '@/components/routing/AlertsCard';
-import { usePatchRouting } from '@/lib/api/settings';
+import { usePatchRouting, useRouting } from '@/lib/api/settings';
+import type { RoutingEntryResponse } from '@/lib/api/types';
+
+function rowFromEntry(entry: RoutingEntryResponse): RoutingPolicyRow {
+  return {
+    jobType: entry.job_type as RoutingPolicyRow['jobType'],
+    provider: entry.preferred_provider,
+    model: entry.preferred_model,
+    temperature: entry.temperature,
+    topP: entry.top_p,
+    maxTokens: entry.max_tokens,
+    concurrency: entry.max_concurrency,
+    rpm: entry.requests_per_minute,
+    tpm: entry.tokens_per_minute,
+    dailyCap: entry.daily_budget_usd ?? 0,
+  };
+}
 
 export default function RoutingPage() {
   const { mutateAsync, isPending } = usePatchRouting();
+  const { data: routing } = useRouting();
+  const [rows, setRows] = React.useState<RoutingPolicyRow[]>(DEFAULT_ROUTING_ROWS);
+
+  React.useEffect(() => {
+    if (routing?.entries?.length) {
+      setRows(routing.entries.map(rowFromEntry));
+    }
+  }, [routing]);
 
   const handleSave = async () => {
     try {
-      await new Promise<void>((r) => setTimeout(r, 200));
-      void mutateAsync({}).catch(() => {});
+      await mutateAsync({
+        entries: rows.map((row) => {
+          const fallbackModel =
+            isGodTierJobType(row.jobType)
+              ? (row.model === 'openai/gpt-5.4' ? null : 'openai/gpt-5.4')
+              : (row.model === 'openai/gpt-4o-mini' ? null : 'openai/gpt-4o-mini');
+          return {
+            job_type: row.jobType,
+            preferred_provider: row.provider,
+            preferred_model: row.model,
+            fallback_provider: fallbackModel ? 'openrouter' : null,
+            fallback_model: fallbackModel,
+            temperature: row.temperature,
+            top_p: row.topP,
+            max_tokens: row.maxTokens,
+            max_concurrency: row.concurrency,
+            requests_per_minute: row.rpm,
+            tokens_per_minute: row.tpm,
+            timeout_seconds: 120,
+            retry_policy: 'exponential_backoff',
+            daily_budget_usd: row.dailyCap || null,
+            payload: {
+              source: 'routing_settings_ui',
+            },
+          };
+        }),
+      });
       toast.success('Routing settings saved.');
-    } catch {
-      toast.error('Failed to save routing settings.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save routing settings.');
     }
   };
 
   const handleReset = () => {
+    setRows(DEFAULT_ROUTING_ROWS);
     toast.info('Routing settings reset to defaults.');
   };
 
@@ -53,15 +108,6 @@ export default function RoutingPage() {
             <RotateCcw className="h-3.5 w-3.5" />
             Reset to Default
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-          >
-            <Import className="h-3.5 w-3.5" />
-            Import Policies
-          </Button>
           <Button type="button" size="sm" className="gap-1.5" onClick={handleSave} disabled={isPending}>
             <Save className="h-3.5 w-3.5" />
             Save Changes
@@ -75,7 +121,7 @@ export default function RoutingPage() {
         <div className="flex-1 min-w-0 space-y-6">
           <section>
             <h2 className="text-sm font-semibold mb-3">Model Routing Policies</h2>
-            <RoutingPoliciesTable />
+            <RoutingPoliciesTable rows={rows} onRowsChange={setRows} />
           </section>
 
           <GlobalRoutingSettingsCard />

@@ -51,8 +51,9 @@ async def test_get_zep_ok(client, db_session):
     assert resp.status_code == 200
     data = resp.json()
     assert data["setting_id"] == "default"
-    assert data["enabled"] is True
-    assert data["mode"] == "cohort_memory"
+    assert data["enabled"] is False
+    assert data["mode"] == "local"
+    assert data["payload"]["active_memory"] == "local"
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ async def test_patch_zep_ok(client, db_session):
     assert resp.status_code == 200
     data = resp.json()
     assert data["enabled"] is False
-    assert data["mode"] == "hybrid"
+    assert data["mode"] == "local"
 
 
 @pytest.mark.asyncio
@@ -97,7 +98,10 @@ async def test_zep_test_ok(client):
     mock_provider.healthcheck = AsyncMock(return_value={"ok": True, "latency_ms": 30})
 
     import backend.app.api.integrations as _intg_mod
-    with patch.object(_intg_mod, "get_memory", return_value=mock_provider):
+    with (
+        patch.object(_intg_mod, "_zep_runtime_enabled", return_value=True),
+        patch.object(_intg_mod, "get_memory", return_value=mock_provider),
+    ):
         resp = await client.post("/api/integrations/zep/test")
 
     assert resp.status_code == 200
@@ -111,7 +115,10 @@ async def test_zep_test_degraded(client):
     mock_provider.healthcheck = AsyncMock(side_effect=Exception("Zep unavailable"))
 
     import backend.app.api.integrations as _intg_mod
-    with patch.object(_intg_mod, "get_memory", return_value=mock_provider):
+    with (
+        patch.object(_intg_mod, "_zep_runtime_enabled", return_value=True),
+        patch.object(_intg_mod, "get_memory", return_value=mock_provider),
+    ):
         resp = await client.post("/api/integrations/zep/test")
 
     assert resp.status_code == 200

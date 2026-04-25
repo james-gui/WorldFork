@@ -33,6 +33,9 @@ export interface JobRow {
   started: string;
   latency: string;
   retries: number;
+  artifactPath?: string | null;
+  resultSummary?: Record<string, unknown> | null;
+  payload?: Record<string, unknown>;
 }
 
 interface JobsTableProps {

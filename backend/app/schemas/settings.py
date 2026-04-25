@@ -28,7 +28,7 @@ class ProviderConfig(BaseModel):
     fallback_model: str | None = None
     json_mode_required: bool = True
     tool_calling_enabled: bool = True
-    enabled: bool = True
+    enabled: bool = False
     extra_headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -119,10 +119,10 @@ class ZepConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
+    enabled: bool = False
     mode: Literal[
-        "cohort_memory", "hero_memory", "run_scoped_threads", "hybrid"
-    ] = "cohort_memory"
+        "local", "local_ledger", "cohort_memory", "hero_memory", "run_scoped_threads", "hybrid"
+    ] = "local"
     api_key_env: str = "ZEP_API_KEY"
     cache_ttl_seconds: int = Field(default=300, ge=0)
     degraded: bool = False
