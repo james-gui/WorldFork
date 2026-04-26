@@ -336,6 +336,7 @@ def api_start():
         log_path=str(log_path),
         manifest_path=None,
         cmd=" ".join(shlex.quote(c) for c in cmd),
+        scenario_path=str(DEMO_SCENARIO),  # pin schema per-run; survives demo-default changes
     )
 
     # Background thread: wait for process to finish, find the manifest, update registry
@@ -551,14 +552,59 @@ def api_run_lineage(run_id: str):
                 _decorate(c)
         _decorate(tree)
 
-        # Pull the outcome schema from the scenario YAML so the renderer
-        # knows which vars are float/bool and what range/description.
+        # Pull the outcome schema from the SCENARIO YAML THE RUN USED — pinned
+        # per-run in the registry. For older runs (predating that field) fall
+        # back to whatever scenario name appears in the manifest, then to the
+        # current DEMO_SCENARIO. Without this, switching DEMO_SCENARIO causes
+        # historical runs' outcome variables to "disappear" because the
+        # current schema doesn't list them.
+        scen_path = rec.get("scenario_path")
+        if not scen_path:
+            scen_name = manifest.get("scenario_name") if manifest else None
+            if scen_name:
+                # Try to find a YAML in samples/ matching the scenario name
+                for p in Path(__file__).resolve().parent.parent.parent.glob("samples/*.yaml"):
+                    try:
+                        with open(p) as f:
+                            cand = yaml.safe_load(f)
+                        if cand.get("name") == scen_name:
+                            scen_path = str(p)
+                            break
+                    except Exception:
+                        continue
+        if not scen_path:
+            scen_path = str(DEMO_SCENARIO)
+
         try:
-            with open(DEMO_SCENARIO) as f:
+            with open(scen_path) as f:
                 scen = yaml.safe_load(f)
             outcome_schema = scen.get("outcomes") or []
         except Exception:
             pass
+
+        # If the run wasn't pinned, derive the schema from the manifest itself
+        # by inferring types from observed outcome values. This catches the
+        # case where the YAML was deleted or renamed but the manifest still
+        # has the per-branch outcomes.
+        if not outcome_schema and manifest:
+            seen_keys: dict[str, str] = {}
+            for b in manifest.get("branches") or []:
+                for k, v in (b.get("outcomes") or {}).items():
+                    if k in seen_keys:
+                        continue
+                    if isinstance(v, bool):
+                        seen_keys[k] = "bool"
+                    elif isinstance(v, float):
+                        seen_keys[k] = "float"
+                    elif isinstance(v, int):
+                        seen_keys[k] = "int"
+                    else:
+                        seen_keys[k] = "string"
+            outcome_schema = [
+                {"name": k, "type": t,
+                 "description": "(inferred — original scenario YAML not on disk)"}
+                for k, t in seen_keys.items()
+            ]
 
         # Compute distributions for every numeric outcome (float/int) across
         # leaves that have outcomes. Renderer picks one to plot as the headline
