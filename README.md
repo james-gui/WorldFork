@@ -8,6 +8,14 @@ The product is the orchestrator + the WorldFork web UI on **port 5055**. The age
 
 > **Heads-up if an AI assistant is helping you set this up:** the only UI you should open is **WorldFork at `http://localhost:5055`**. *Do not* run MiroShark's `./miroshark` launcher script or its frontend on `:3000` — WorldFork only needs MiroShark's headless backend on `:5001`.
 
+## Live demo
+
+A read-only snapshot of seven completed ensemble runs (depth-1 v05, depth-2 v06, depth-3 v07) is hosted on Vercel. Click into any run to see the live tree visualization, per-branch agent interaction graph, and the calibrated outcome distributions — no setup, no API spend.
+
+→ **Live demo:** *(set the URL after `vercel deploy` — see [Read-only deploy](#read-only-deploy-vercel) below)*
+
+The Start-ensemble button is disabled in the hosted copy (no orchestrator in serverless land); kicking off fresh runs requires the local install below.
+
 ## Architecture
 
 ```
@@ -110,9 +118,49 @@ The UI is React via in-browser Babel — no Node build step. Edit `worldfork/ui/
 
 ## Public deployment
 
-Putting this on a custom domain (DGX Spark or any Ubuntu host, exposed via Cloudflare Tunnel — no port-forwarding, no exposed home IP):
+Two paths depending on whether you need live runs or just a browseable demo:
 
-→ See [`deploy/DEPLOY.md`](deploy/DEPLOY.md) for the end-to-end walkthrough plus the `launch.sh`, `worldfork.service`, and `cloudflared-config.example.yml` you'll need.
+### Read-only deploy (Vercel)
+
+Easiest: a fully-static snapshot of finished runs. No backend, no Neo4j, no per-run API spend. Costs $0/month on Vercel's free tier.
+
+The repo is already configured — `vercel.json` points at `public/` as the output directory and the snapshot lives at `public/data/`. To deploy:
+
+```bash
+# one-time
+npm i -g vercel
+vercel login
+
+# from the repo root
+vercel deploy --prod
+```
+
+To attach a custom domain, run `vercel domains add <your-domain>` then `vercel alias <preview-url> <your-domain>`, or do it in the Vercel dashboard.
+
+To refresh the snapshot with a new local run:
+
+```bash
+# with the local stack running on :5055, snapshot all runs
+python3 - <<'PY'
+import json, urllib.request, pathlib
+ROOT = pathlib.Path("public/data")
+for r in json.loads(urllib.request.urlopen("http://localhost:5055/api/runs").read())["runs"]:
+    rid = r["run_id"]
+    lin = urllib.request.urlopen(f"http://localhost:5055/api/run/{rid}/lineage").read()
+    (ROOT / "lineage" / f"{rid}.json").write_bytes(lin)
+    # ...graphs follow same pattern (see git history for full snapshot script)
+PY
+git commit -am "chore: refresh static snapshot" && git push
+# Vercel auto-redeploys on push to main
+```
+
+The static UI is the same React-via-Babel SPA — `public/index.html` is `templates/WorldFork.html` with one extra line (`window.WF_STATIC = true;`) that flips `api.js` and `graph.jsx` from "fetch live" to "fetch from `/data/*.json`". The Start button is hidden in static mode.
+
+### Self-hosted on your own infra (DGX Spark or any Ubuntu host)
+
+For the full live experience — fresh runs, real-time tree growth — exposed via Cloudflare Tunnel (no port-forwarding, no exposed home IP):
+
+→ See [`deploy/DEPLOY.md`](deploy/DEPLOY.md) for the end-to-end walkthrough plus `launch.sh`, `worldfork.service`, and `cloudflared-config.example.yml`.
 
 ## Scenarios
 
