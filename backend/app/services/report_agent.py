@@ -1066,7 +1066,7 @@ class ReportAgent:
 
     # Max parallel section workers. Claude/Gemini/GPT APIs comfortably handle
     # 5-8 parallel requests per key. OpenRouter's rate limit is well above this.
-    MAX_PARALLEL_SECTIONS = 6
+    MAX_PARALLEL_SECTIONS = 10
     
     def __init__(
         self, 

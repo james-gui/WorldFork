@@ -46,7 +46,7 @@ class GraphBuilderService:
         graph_name: str = "MiroShark Graph",
         chunk_size: int = 1000,
         chunk_overlap: int = 50,
-        max_workers: int = 6
+        max_workers: int = 12
     ) -> str:
         """
         Build graph asynchronously
@@ -210,7 +210,7 @@ class GraphBuilderService:
         self,
         graph_id: str,
         chunks: List[str],
-        max_workers: int = 6,
+        max_workers: int = 12,
         progress_callback: Optional[Callable] = None
     ) -> List[str]:
         """Add text chunks to graph in parallel, return uuid list of all episodes.

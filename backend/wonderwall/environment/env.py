@@ -150,7 +150,7 @@ class WonderwallEnv:
                     allow_self_rating=True,
                     show_score=True,
                     max_rec_post_len=100,
-                    refresh_rec_post_count=5,
+                    refresh_rec_post_count=3,
                 )
                 self.platform_type = DefaultPlatformType.REDDIT
             else:
@@ -210,10 +210,13 @@ class WonderwallEnv:
             None
         """
         # Update the recommendation system (no-op for platforms that don't
-        # implement it).
+        # implement it). Run every 2nd round — recsys cost grows linearly with
+        # post count and the cache from the prior call stays valid.
         if hasattr(self.platform, 'update_rec_table'):
-            await self.platform.update_rec_table()
-            env_log.info("update rec table.")
+            self._step_count = getattr(self, '_step_count', 0) + 1
+            if self._step_count % 2 == 0:
+                await self.platform.update_rec_table()
+                env_log.info("update rec table.")
 
         # Create tasks for both manual and LLM actions
         tasks = []

@@ -1,0 +1,65 @@
+# Smoke-test scenario for end-to-end orchestrator validation.
+# Pairs with the existing parent sim (sim_fb48a14014ab) which already has
+# NSB-themed agent profiles. We're testing that the wiring works — not
+# producing publication-quality probabilities.
+
+name: nsb_branching_smoke
+description: >
+  End-to-end smoke test: 2 sibling branches forked from the existing
+  NSB dissolution simulation, each with a different Director-Mode
+  perturbation injected at round 4.
+
+# Used only by Phase 2 (perturbation generation). When --perturbations-file
+# is passed, this is bypassed.
+seed_document: nsb_smoke_seed.txt
+
+simulation:
+  platform: reddit            # we'll classify on Reddit posts (cheaper than twitter recsys)
+  horizon_rounds: 10          # cap so the smoke test finishes fast (~$1 total)
+
+branching:
+  fork_round: 4
+  num_branches: 2             # tiny for the smoke test
+  perturbation_strategy: god_llm
+  god_llm_model: google/gemini-3.1-flash-lite-preview
+
+# Same outcome variables as the Layer 3 schema, since the parent sim
+# already validated the classifier on this topic.
+outcomes:
+  - name: dissolution_supported
+    description: >
+      Did at least one post explicitly defend, justify, or support the
+      dissolution of the National Science Board?
+    type: bool
+
+  - name: dissolution_opposed
+    description: >
+      Did at least one post explicitly criticize, oppose, or condemn the
+      dissolution?
+    type: bool
+
+  - name: legal_action_mentioned
+    description: >
+      Did any post or comment mention lawsuits, legal challenges, court
+      cases, injunctions, or constitutional concerns related to the
+      dissolution?
+    type: bool
+
+  - name: dominant_sentiment
+    description: >
+      Average sentiment on a 0–10 scale where 0=panic/outrage,
+      5=mixed, 10=celebration/approval.
+    type: float
+    range: [0, 10]
+
+# Smoke-test thresholds — kept loose so even a short run can pass.
+validity_checks:
+  min_posts_about_topic: 5
+  completed_all_rounds: true
+
+aggregation:
+  primary_split: dissolution_supported
+  cluster_summarize: false
+
+budget:
+  max_usd: 5.00

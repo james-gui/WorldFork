@@ -1,0 +1,15 @@
+TIME: Tuesday, 9:30 AM ET
+
+BREAKING: Reuters is reporting that Circle Internet Financial, the issuer of USDC stablecoin, has lost banking access at one of its three primary banking partners. According to two sources familiar with the matter, the bank notified Circle late Monday that it was terminating the relationship effective immediately, citing an "internal compliance review." Circle has not responded to multiple requests for comment.
+
+USDC, the world's second-largest stablecoin with $34 billion in circulation, began trading at $0.998 on Coinbase shortly after market open — down from its $1.00 peg. Trading volume in the past hour has tripled compared to the prior 24-hour average. The Block reporter @lightcrypto_ first surfaced the story at 9:14 AM.
+
+Circle CEO Jeremy Allaire posted on X 22 minutes ago: "USDC reserves are 100% backed and held at multiple banking partners. We will issue a full statement shortly." No further communication has been issued.
+
+BlackRock, which manages part of Circle's reserves through its Circle Reserve Fund, has not commented publicly. Coinbase, Circle's primary distribution partner and co-founder of the Centre consortium, has not paused USDC redemptions.
+
+Crypto Twitter is reacting in real time. Tether's CTO Paolo Ardoino has yet to comment. Major crypto exchanges have not paused USDC withdrawals as of this writing. The first redemption queue snapshot from on-chain analytics shows $180M in pending burns at the Circle mint contract.
+
+Affected actors include retail USDC holders, DeFi protocols with large USDC reserves (Aave, Maker, Compound), market makers running stablecoin arbitrage desks, crypto-native journalists, regulatory observers, competing stablecoin issuers, and the broader Twitter/X crypto commentariat. Sentiment in the first hour is uncertain — some treating this as a banking hiccup, others recalling the SVB-era depeg of March 2023.
+
+The next several hours are critical for whether USDC holds the peg or breaks the $0.99 psychological floor that triggered the previous cascade.

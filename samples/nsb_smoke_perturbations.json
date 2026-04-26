@@ -1,0 +1,16 @@
+{
+  "scenario": "nsb_branching_smoke",
+  "fork_round": 4,
+  "n": 2,
+  "_note": "Hand-written perturbations for the smoke test — bypasses Phase 2.",
+  "perturbations": [
+    {
+      "label": "court_injunction_filed",
+      "event_text": "BREAKING: A coalition of 12 university research offices and the American Association for the Advancement of Science (AAAS) has filed an emergency motion in the D.C. Circuit Court seeking a preliminary injunction to halt the dissolution of the National Science Board. The filing argues the action violates Section 1863 of Title 42 U.S.C., which establishes the NSB by statute and requires congressional action for its dissolution. Federal Judge Tanya Chutkan has scheduled an emergency hearing for Friday morning."
+    },
+    {
+      "label": "white_house_doubles_down",
+      "event_text": "BREAKING: White House Press Secretary Karoline Leavitt held a surprise press briefing announcing the administration will withhold all FY2026 NSF funding for projects associated with former NSB members or universities that 'publicly oppose strategic realignment.' The press release specifies $1.2B in pending grants will be 'paused for review.' Senator John Thune (R-SD) issued a statement supporting the move; Senator Maria Cantwell (D-WA) called it 'lawless retaliation.'"
+    }
+  ]
+}

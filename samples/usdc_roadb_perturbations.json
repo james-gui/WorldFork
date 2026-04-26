@@ -1,0 +1,18 @@
+{
+  "scenario": "usdc_depeg_v0",
+  "fork_round": 1,
+  "n": 2,
+  "_note": "Road B test: each branch has BOTH a Director Mode event_text AND a mood_modifier appended to every agent's persona. Tests whether psychological disposition + world event together produce divergent outcomes when world event alone did not.",
+  "perturbations": [
+    {
+      "label": "calm_with_bailout",
+      "event_text": "BREAKING: BlackRock has announced a $20 BILLION emergency liquidity injection into Circle's reserves, with the US Treasury Department issuing a joint public statement confirming Circle's reserves are 'fully audited, fully secured, and explicitly backstopped by federal facilities.' Within minutes USDC has rebounded to $1.001 across all major exchanges, and trading volume on USDC/USD pairs has tripled as institutional buyers move in. Coinbase reports that USDC redemptions are processing without delay.",
+      "mood_modifier": "Your current emotional state is calm, confident, and slightly amused. You have personally watched many supposed 'crypto crises' resolve quickly through institutional support, and this one feels especially well-contained. You think the panic crowd is overreacting, you have NOT moved any of your USDC holdings, and you are actively considering increasing exposure as opportunistic buying. When you observe posts panicking about depeg, you find them excessive and unconvincing. When you write or comment, you express measured reassurance, factual context, and gentle skepticism toward catastrophizing claims. You are NOT in a bullish mood about crypto generally — just specifically calm about USDC's resilience right now."
+    },
+    {
+      "label": "panic_with_freeze",
+      "event_text": "BREAKING: Coinbase has SUSPENDED all USDC redemptions citing 'unprecedented liquidity stress.' Kraken is now showing USDC at $0.81, Binance at $0.83. Tether's CTO Paolo Ardoino has tweeted 'we warned you about USDC reserves' to 1.2M followers. On-chain data confirms Aave has triggered emergency liquidations of $400M in USDC-collateralized loans, with MakerDAO emergency-voting to remove ALL USDC backing from DAI within the hour.",
+      "mood_modifier": "Your current emotional state is intensely alarmed and decisive. You have personally moved or are actively moving all your USDC holdings out — to USDT, to off-platform cold storage, to fiat — at whatever execution price you can get. You feel a strong urgency, like watching SVB-March-2023 unfold in real time. You believe Circle's reserves are likely impaired and that the depeg is going to deepen rather than recover. When you observe posts urging calm, you find them naive or actively harmful. When you write or comment, you advocate for immediate exit, share warning signals, and amplify any signs of cascade. You are NOT in a doom mood about crypto generally — just specifically convinced that USDC is in serious trouble right now and people who don't act fast will lose money."
+    }
+  ]
+}

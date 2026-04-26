@@ -144,6 +144,7 @@ class SocialAgent(ChatAgent):
             model=model,
             scheduling_strategy='random_model',
             tools=all_tools,
+            message_window_size=10,
         )
         self.max_iteration = max_iteration
         self.interview_record = interview_record

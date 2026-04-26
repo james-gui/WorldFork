@@ -1,0 +1,27 @@
+{
+  "scenario": "usdc_depeg_v0",
+  "fork_round": 1,
+  "n": 4,
+  "perturbations": [
+    {
+      "label": "stabilizing_institutional_backstop",
+      "event_text": "BlackRock has issued a formal statement confirming that all Circle Reserve Fund assets remain liquid and fully segregated from the impacted banking partner. Furthermore, Coinbase has announced a $500 million liquidity injection specifically to support USDC-to-USD redemptions at parity. The firm guarantees that all redemption requests will be processed within standard ACH timeframes.",
+      "mood_modifier": "You feel a profound sense of relief and confidence, knowing that the institutional giants have stepped in to guarantee the peg. You have kept your entire USDC balance untouched, viewing the current dip as a temporary market inefficiency. When you see others posting about 'depeg risk' or 'exit windows,' you feel pity for their lack of foresight and dismiss them as uninformed panic-sellers. Your tone in all your posts is dismissive, authoritative, and centered on the inevitability of a swift recovery to $1.00."
+    },
+    {
+      "label": "escalating_bank_contagion",
+      "event_text": "A second major regional bank has officially suspended Circle’s corporate account access, citing a directive from federal regulators to minimize exposure to stablecoin issuers. Simultaneously, on-chain data shows an additional $1.2 billion in USDC has been burned in the last hour, pushing the market price down to $0.975. Major lending protocols have begun disabling USDC as collateral for new loans.",
+      "mood_modifier": "You are deeply alarmed and feel the walls closing in on your liquidity. You have already moved every cent of your USDC into USDT and fiat to avoid the impending collapse. When you read posts suggesting this is just a 'hiccup' or urging people to 'hold,' you feel genuine anger at their recklessness and respond with urgent, aggressive warnings to exit immediately. You write in short, frantic sentences, using caps and exclamation points to convey the severity of the situation."
+    },
+    {
+      "label": "ambiguous_regulatory_silence",
+      "event_text": "The Federal Reserve and the SEC have both declined to comment on the Circle banking situation, stating they are monitoring the market without providing further guidance. Meanwhile, Tether’s CTO Paolo Ardoino has issued a cryptic tweet stating that 'transparency is the only path forward,' without explicitly mentioning USDC. Market prices remain volatile, oscillating between $0.988 and $0.995 as participants weigh the lack of official information.",
+      "mood_modifier": "You are feeling highly uncertain and find yourself constantly refreshing your feed for a sign of what comes next. You have moved half of your USDC to a cold wallet, keeping the rest in USDC just in case the situation stabilizes. When you see others acting with total certainty—whether bullish or bearish—you find their conviction suspicious and baffling. You write in a cautious, hedging register, frequently using phrases like 'it remains to be seen' or 'we lack the data to know' to avoid committing to a definitive stance."
+    },
+    {
+      "label": "cynical_market_correction",
+      "event_text": "Anonymous sources within the banking sector claim the 'compliance review' is a pretext for a broader move by traditional financial institutions to de-risk from crypto-native assets. In response, several high-frequency trading firms have widened their spreads on USDC/USD pairs, leading to a temporary flash crash to $0.982. Circle has released a second, brief statement reiterating that their reserves are secure, but they have notably avoided naming their remaining banking partners.",
+      "mood_modifier": "You are feeling deeply cynical and view this entire event as a calculated game played by institutional players to shake out retail holders. You have sold a small portion of your USDC to buy the dip, betting that the peg will eventually return to $1.00 once the market manipulation subsides. When you see people panic-posting about the 'end of USDC,' you find their naivety laughable and enjoy trolling them with sarcastic, contrarian replies. Your tone is smug, detached, and heavily focused on the idea that the market is rigged."
+    }
+  ]
+}

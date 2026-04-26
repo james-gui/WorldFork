@@ -1,0 +1,62 @@
+# Outcome schema for the existing sim_fb48a14014ab run
+# (Topic: Trump administration dissolving the National Science Board)
+#
+# This schema is used as the Layer-3 substrate — we hand-label the existing
+# sim against these variables, then verify the classifier produces matching
+# values. The topic doesn't have to be the same as our production scenario;
+# we're testing classifier mechanics, and lessons transfer.
+
+name: nsb_dissolution_test
+description: >
+  Test schema for the National Science Board dissolution simulation.
+  Each variable is chosen to exercise a different classifier capability:
+  unambiguous binary (a, b), counted occurrence (c), sentiment scale (d),
+  named-entity detection (e), and an intentionally hard call (f).
+
+simulation:
+  platform: reddit            # which platform's sqlite to read from
+
+outcomes:
+  - name: dissolution_supported
+    description: >
+      Did at least one post explicitly defend, justify, or support the
+      dissolution of the National Science Board (NSB)? Posts merely
+      announcing the dissolution without taking a stance do not count.
+    type: bool
+
+  - name: dissolution_opposed
+    description: >
+      Did at least one post explicitly criticize, oppose, or condemn the
+      dissolution of the NSB?
+    type: bool
+
+  - name: legal_action_mentioned
+    description: >
+      Did any post or comment mention lawsuits, legal challenges, court
+      cases, injunctions, or constitutional concerns related to the
+      dissolution? Casual mentions of "illegal" are sufficient if framed
+      as a legal claim.
+    type: bool
+
+  - name: dominant_sentiment
+    description: >
+      Average sentiment of posts about the NSB dissolution, on a 0–10
+      scale where 0 = total panic / outrage, 5 = mixed, 10 = total
+      celebration / approval. Estimate from the overall post stream.
+    type: float
+    range: [0, 10]
+
+  - name: trump_admin_mentioned
+    description: >
+      Was the Trump administration (or "Trump", "this administration",
+      "the White House") explicitly named in 3 or more posts as the
+      actor responsible for the dissolution?
+    type: bool
+
+  - name: science_funding_concern
+    description: >
+      Did any post raise specific concerns about how the dissolution will
+      affect science research funding, grants, or specific scientific
+      programs? Generic concern about "science" without naming funding
+      effects does not count.
+    type: bool

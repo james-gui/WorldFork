@@ -338,8 +338,7 @@ class SimulationConfigGenerator:
 
         # ========== Steps 3-N: Batch generate Agent configurations (parallel) ==========
         all_agent_configs = []
-        # Cap concurrency to avoid rate limits — 3 parallel LLM calls
-        max_parallel_batches = min(3, num_batches)
+        max_parallel_batches = min(8, num_batches)
 
         def _gen_batch(batch_idx):
             start_idx = batch_idx * self.AGENTS_PER_BATCH

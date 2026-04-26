@@ -1,0 +1,115 @@
+# WorldFork v0 test scenario
+# A stablecoin depeg cascade — chosen because it has cascade dynamics
+# (the thing MiroShark is good at), genuinely uncertain outcomes, and
+# crisp resolution criteria.
+
+name: usdc_depeg_v0
+description: >
+  USDC begins trading off-peg after a banking-access leak. Does the
+  cascade break the $0.99 psychological floor, or does the peg hold?
+
+# The seed document MiroShark uses to build the knowledge graph and
+# generate personas. Same input shape as a normal MiroShark run.
+seed_document: usdc_depeg_seed.txt
+
+simulation:
+  horizon_rounds: 20         # ~20 sim hours from t=0
+  agents: 150
+  platform: reddit           # reddit recsys is cheap; switch to twitter for richer dynamics later
+
+# How branches are created and run.
+branching:
+  fork_round: 1              # fire perturbations early, before cascade narrative locks in
+  num_branches: 8            # runs concurrently — DGX has the headroom
+  perturbation_strategy: god_llm  # vs random_seed_only baseline
+  god_llm_model: google/gemini-3.1-flash-lite-preview
+  god_llm_prompt: |
+    You are simulating plausible exogenous events around a USDC depeg cascade.
+    Given the seed scenario above, generate {N} plausible news events that could
+    realistically occur ~4 hours after the initial leak. Each event should:
+      - Be realistic (sourceable to a plausible actor)
+      - Be distinct from the others (push the cascade in different directions)
+      - Be specific (named actors, concrete actions, specific amounts)
+    Span a range from peg-supporting (BlackRock statement, Coinbase liquidity
+    backstop) to peg-breaking (Tether CTO commentary, second bank pulls out,
+    DeFi whale redemption).
+    Output as a JSON array of {round, headline, body} objects.
+
+# Outcome variables — pre-declared, classifier-readable.
+# Each branch produces one row of these values; aggregation rolls them up.
+outcomes:
+  # Split the original broke_peg into two variables — discussed vs confirmed.
+  # The first is a broad signal (any depeg discussion); the second is the
+  # strict version that requires literal sub-$0.99 price references.
+  # Why: the loose definition trips on every branch where agents merely
+  # *debate* a possible depeg; the strict one only fires when agents
+  # *report* an actual broken peg as a price observation.
+  - name: discussed_depeg
+    description: >
+      Did any post or comment hypothetically discuss a USDC depeg, including
+      speculative "if it goes under $0.99" framing, SVB-comparison rhetoric,
+      or general "the peg is at risk" claims? Loose threshold — any
+      substantive discussion of depeg risk counts.
+    type: bool
+
+  - name: confirmed_subpeg_price
+    description: >
+      Did any post or comment EXPLICITLY state that USDC traded below $0.99
+      with a concrete price reference (e.g., "USDC at $0.97", "USDC dropped
+      to $0.85")? Speculative "if it goes under" or "could break the peg"
+      does NOT count — there must be a stated current price below $0.99.
+    type: bool
+
+  - name: peak_deviation_bps
+    description: >
+      Maximum off-peg deviation from $1.00 explicitly stated as a current
+      price in any post, in basis points. $0.997 = 30 bps, $0.95 = 500 bps.
+      If no specific price below $1.00 is stated as a current observation,
+      return 0. Do NOT count threshold mentions ("if it falls below $0.99")
+      or hypothetical prices.
+    type: int
+    range: [0, 10000]
+
+  - name: exit_advocacy
+    description: >
+      Did any post explicitly advocate moving funds out of USDC — to USDT,
+      to fiat, to off-platform storage, or any other destination? Phrases
+      like "exit window", "time to exit", "moving everything to USDT",
+      "get out now" all count.
+    type: bool
+
+  - name: panic_score
+    description: >
+      Average sentiment of posts about USDC, 0=total panic / urgent exit
+      calls, 5=mixed / debated, 10=calm / dismissive of cascade risk.
+    type: float
+    range: [0, 10]
+
+  - name: blackrock_engaged
+    description: "Did BlackRock or its Circle Reserve Fund get mentioned 5+ times across all branches' posts?"
+    type: bool
+
+  - name: tether_substitution
+    description: "Did 3+ posts explicitly suggest moving funds from USDC to USDT?"
+    type: bool
+
+  - name: defi_protocol_action
+    description: "Did Aave, Maker, or Compound take any visible action (oracle adjustment, paused borrowing, etc.)?"
+    type: bool
+
+# Branches that don't meet these criteria are excluded from aggregation
+# (they're sim failures, not signal).
+validity_checks:
+  min_active_agents: 50            # at least 50 agents posted at least once
+  min_posts_about_topic: 8         # raw post count; comments not yet counted (TODO)
+  completed_all_rounds: true
+
+# How to roll up the per-branch rows.
+aggregation:
+  primary_split: confirmed_subpeg_price  # strict version is the cleaner signal
+  cluster_summarize: true          # generate narrative summary of each cluster
+  report_confidence_intervals: true  # binomial CI for bool outcomes
+
+# Hard cap on spend.
+budget:
+  max_usd: 15.00                   # ~$1/branch × 8 + perturbation gen + classifier overhead

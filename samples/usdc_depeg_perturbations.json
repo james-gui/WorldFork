@@ -1,0 +1,39 @@
+{
+  "scenario": "usdc_depeg_v0",
+  "fork_round": 4,
+  "n": 8,
+  "perturbations": [
+    {
+      "label": "blackrock_reserve_reassurance",
+      "event_text": "BlackRock has issued a formal statement confirming that all assets within the Circle Reserve Fund remain liquid and fully accounted for in short-term US Treasuries. The asset management giant emphasized that the fund's operations are independent of Circle's individual banking relationships. USDC prices ticked up to $0.999 following the announcement."
+    },
+    {
+      "label": "aave_governance_emergency",
+      "event_text": "The Aave DAO has initiated an emergency governance vote to temporarily lower the Loan-to-Value (LTV) ratio for USDC-collateralized loans. This move is designed to mitigate systemic risk across the protocol as market volatility persists. The proposal is currently seeing high participation from major liquidity providers."
+    },
+    {
+      "label": "tether_market_buy",
+      "event_text": "Tether CTO Paolo Ardoino tweeted that USDT continues to maintain full liquidity and invited users to utilize the Tether platform for 'stable and reliable' redemptions. On-chain data shows a $50M inflow into USDT liquidity pools on Uniswap, suggesting a significant rotation of capital out of USDC. USDC is currently trading at $0.994."
+    },
+    {
+      "label": "whale_dump_coinbase",
+      "event_text": "An anonymous wallet address moved $150M in USDC to Coinbase and sold the entire position for USD within minutes. This massive sell order caused a temporary flash crash on the exchange, pushing USDC down to $0.985. The order book is currently struggling to absorb the heavy sell pressure."
+    },
+    {
+      "label": "senator_oversight_inquiry",
+      "event_text": "Senator Cynthia Lummis has sent a public letter to the Federal Reserve and Circle requesting an immediate briefing on the status of USDC’s reserve transparency. The letter cites concerns regarding 'operational stability' and 'systemic contagion' in the broader stablecoin market. Markets are reacting with heightened caution to the prospect of increased regulatory scrutiny."
+    },
+    {
+      "label": "leaked_internal_memo",
+      "event_text": "A leaked memo from a mid-level manager at Circle suggests the bank termination was due to concerns regarding 'concentration risk' in crypto-exposed accounts rather than insolvency. The document indicates Circle is in active talks with two Tier-1 global banks to replace the lost partner. Sentiment remains split as traders debate whether this is a minor operational delay or a long-term structural weakness."
+    },
+    {
+      "label": "coinbase_pause_withdrawals",
+      "event_text": "Coinbase has briefly paused USDC-to-USD withdrawals, citing 'unexpectedly high traffic' and a need to balance liquidity across its platforms. The exchange claims this is a standard maintenance procedure to ensure orderly markets. USDC has broken the $0.99 psychological floor, currently trading at $0.982."
+    },
+    {
+      "label": "stablecoin_arbitrage_bot_failure",
+      "event_text": "Several major market-making bots have been disabled due to anomalous pricing errors between USDC and other stablecoins on decentralized exchanges. The resulting lack of liquidity has widened the spread between USDC and the dollar significantly. Traders are reporting difficulty executing trades on Curve Finance as the pool balance remains heavily skewed toward USDC."
+    }
+  ]
+}

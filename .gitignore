@@ -69,3 +69,8 @@ backend/uploads/
 
 # Docker data
 data/
+
+# WorldFork run artifacts
+runs/
+*.log
+.miroshark.pids
