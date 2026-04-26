@@ -1107,3 +1107,99 @@ body::before {
   color: var(--bg);
   border-color: var(--fg);
 }
+
+/* ---- Graph view (BranchDetail panel) ---- */
+.graph-pane {
+  position: relative;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 12px;
+}
+.graph-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.graph-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+}
+.graph-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.graph-svg {
+  width: 100%;
+  height: 320px;
+  display: block;
+}
+.graph-empty {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-3);
+  text-align: center;
+  padding: 60px 20px;
+}
+.graph-tooltip {
+  position: absolute;
+  bottom: 56px;
+  left: 12px;
+  right: 12px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.06);
+}
+.graph-tooltip strong {
+  font-size: 12px;
+  color: var(--fg);
+}
+.graph-tooltip.edge .edge-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-deep);
+}
+.graph-tooltip.edge .edge-pair {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg);
+}
+.graph-type-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: white;
+  padding: 1px 6px;
+  border-radius: 3px;
+  width: fit-content;
+}
+.graph-summary {
+  font-size: 11px;
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+.graph-legend-item { display: flex; align-items: center; gap: 4px; }
+.graph-legend-item .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }

@@ -522,6 +522,93 @@ def api_run_lineage(run_id: str):
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# API: knowledge graph for a run
+# ---------------------------------------------------------------------------
+
+@app.route("/api/run/<run_id>/graph")
+def api_run_graph(run_id: str):
+    """Return the Neo4j knowledge graph for the run's bootstrap project.
+
+    The graph_id is created during bootstrap (one per parent sim) and shared
+    across all branches under that parent. graph_memory_updater on the
+    MiroShark side keeps adding entities/edges as agents reason, so polling
+    this endpoint surfaces graph evolution within a branch.
+    """
+    rec = _get_run(run_id)
+    if not rec:
+        # Standalone-manifest fallback (mirrors lineage)
+        standalone = RUNS_DIR / f"{run_id}.json"
+        if standalone.exists():
+            try:
+                m = _load_json_cached(str(standalone)) or {}
+                rec = {
+                    "log_path": "",
+                    "manifest_path": str(standalone),
+                    "scenario_path": None,
+                }
+            except Exception:
+                rec = None
+        if not rec:
+            return jsonify({"error": "unknown run_id"}), 404
+
+    log_path = Path(rec.get("log_path", ""))
+    log_text = _read_log_tail(log_path, 5000) if log_path.exists() else ""
+
+    graph_id = None
+    m = re.search(r"graph_id=([a-f0-9-]+)", log_text)
+    if m:
+        graph_id = m.group(1)
+
+    if not graph_id:
+        return jsonify({"run_id": run_id, "graph_id": None, "graph": None,
+                        "error": "graph_id not found in run log"})
+
+    url = f"{BACKEND_URL}/api/graph/data/{graph_id}"
+    try:
+        with _urllib_request.urlopen(url, timeout=10) as resp:
+            body = json.loads(resp.read())
+    except Exception as e:
+        return jsonify({"run_id": run_id, "graph_id": graph_id, "graph": None,
+                        "error": str(e)})
+
+    if not body.get("success"):
+        return jsonify({"run_id": run_id, "graph_id": graph_id, "graph": None,
+                        "error": body.get("error")})
+
+    data = body.get("data") or {}
+    # Slim payload — drop fields the UI doesn't need so a 200-edge graph
+    # stays under a few KB across the polling channel.
+    nodes = [
+        {
+            "id": n.get("uuid"),
+            "name": n.get("name"),
+            "type": (n.get("labels") or ["Entity"])[0],
+            "summary": n.get("summary"),
+        }
+        for n in (data.get("nodes") or [])
+    ]
+    edges = [
+        {
+            "source": e.get("source_node_uuid"),
+            "target": e.get("target_node_uuid"),
+            "type": e.get("name") or e.get("fact_type"),
+            "fact": e.get("fact"),
+        }
+        for e in (data.get("edges") or [])
+        if e.get("source_node_uuid") and e.get("target_node_uuid")
+    ]
+    return jsonify({
+        "run_id": run_id, "graph_id": graph_id,
+        "node_count": len(nodes), "edge_count": len(edges),
+        "graph": {"nodes": nodes, "edges": edges},
+    })
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
     port = int(os.environ.get("WF_PORT", "5055"))
     _reconcile_registry()

@@ -395,6 +395,12 @@ function BranchDetail({ branch, scenario }) {
           round · {branch.current_round || 0} / {branch.total_rounds || "?"}
         </div>
       </div>
+
+      {window.GraphView && scenario?.id && (
+        <div className="detail-section">
+          <window.GraphView runId={scenario.id} />
+        </div>
+      )}
     </div>
   );
 }
