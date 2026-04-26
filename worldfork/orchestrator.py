@@ -566,12 +566,30 @@ async def run_ensemble(
                 child_sim_id=parent_sim_id,
             ))
 
-            # 3) Optional nested fork — second on-demand fork against one of the
-            #    primary children once it reaches `nested_fork.fork_round`. This
-            #    is the same primitive (a future God-Agent decides target +
-            #    timing instead of YAML config).
-            nested_cfg = (cfg.get("branching") or {}).get("nested_fork") or {}
-            if nested_cfg.get("enabled") and run.branches:
+            # 3) Optional nested forks — additional on-demand forks against
+            #    primary children once each reaches its target round. This is
+            #    the same /fork-now primitive (a future God-Agent will pick
+            #    targets + timing dynamically; for now we read a list from
+            #    YAML).
+            #
+            #    Two YAML shapes accepted:
+            #      branching.nested_fork:  (legacy, single)
+            #        { enabled, target_branch_index, fork_round, num_branches }
+            #      branching.nested_forks: (new, list)
+            #        - { target_branch_index, fork_round, num_branches }
+            #        - { target_branch_index, fork_round, num_branches }
+            nested_list = (cfg.get("branching") or {}).get("nested_forks") or []
+            legacy = (cfg.get("branching") or {}).get("nested_fork") or {}
+            if not nested_list and legacy.get("enabled"):
+                nested_list = [{
+                    "target_branch_index": legacy.get("target_branch_index", 0),
+                    "fork_round": legacy.get("fork_round", fork_round + 4),
+                    "num_branches": legacy.get("num_branches", 2),
+                }]
+
+            for nested_cfg in nested_list:
+                if not run.branches:
+                    break
                 target_idx = int(nested_cfg.get("target_branch_index", 0))
                 target_round = int(nested_cfg.get("fork_round", fork_round + 4))
                 target_n = int(nested_cfg.get("num_branches", 2))
@@ -579,70 +597,70 @@ async def run_ensemble(
                     print(f"[orchestrator] nested_fork: target_branch_index={target_idx} "
                           f"out of range (have {len(run.branches)} branches) — skipping",
                           flush=True)
-                else:
-                    target_br = run.branches[target_idx]
-                    if not target_br.child_sim_id:
-                        print(f"[orchestrator] nested_fork: target [{target_br.label}] "
-                              f"never started — skipping nested fork", flush=True)
-                    else:
-                        print(f"[orchestrator] nested_fork: waiting for "
-                              f"[{target_br.label}] ({target_br.child_sim_id}) "
-                              f"to reach round {target_round}…", flush=True)
-                        await _poll_parent_to_round(
-                            client=client, sim_id=target_br.child_sim_id,
-                            target_round=target_round,
-                            poll_interval=poll_interval, timeout_sec=branch_timeout,
-                        )
-                        # Generate fresh perturbations for the nested fork. They're
-                        # applied at a later sim-time so the prompt context shifts
-                        # ("after the initial perturbation has propagated…").
-                        nested_seed_text = cfg.get("_seed_text", "")
-                        nested_context = (
-                            f"NESTED FORK: parent branch '{target_br.label}' "
-                            f"has been running with this perturbation:\n"
-                            f"  {target_br.perturbation_text[:300]}\n\n"
-                            f"Generate {target_n} additional perturbations that "
-                            f"could occur at simulation round {target_round}, "
-                            f"AFTER the initial perturbation has had time to "
-                            f"propagate. Each should branch the cascade in a "
-                            f"distinct new direction."
-                        )
-                        nested_perturbations = generate_perturbations(
-                            seed_text=nested_seed_text,
-                            n=target_n,
-                            context=nested_context,
-                        )
-                        nested_perts_payload = [
-                            {
-                                "label": f"nested_{p['label']}",
-                                "event_text": p.get("event_text", ""),
-                                "mood_modifier": p.get("mood_modifier"),
-                            }
-                            for p in nested_perturbations
-                        ]
-                        print(f"[orchestrator] [nested fork] → /fork-now on "
-                              f"{target_br.child_sim_id} (N={target_n}, "
-                              f"parent_action=continue)…", flush=True)
-                        nested = await client.fork_now(
-                            parent_sim_id=target_br.child_sim_id,
-                            perturbations=nested_perts_payload,
-                            max_rounds=horizon_rounds,
-                            parent_action="continue",
-                        )
-                        for p, child in zip(nested_perturbations, nested["children"]):
-                            grandchild_id = child.get("simulation_id")
-                            br = BranchResult(
-                                label=f"nested_{p['label']}",
-                                perturbation_text=p.get("event_text", ""),
-                                mood_modifier=p.get("mood_modifier"),
-                                parent_sim_id=target_br.child_sim_id,
-                            )
-                            br.child_sim_id = grandchild_id
-                            if p.get("mood_modifier"):
-                                br.mood_applied_counts = {"applied_via_fork_now": True}
-                            run.branches.append(br)
-                            print(f"  [nested_{p['label']}] → {grandchild_id} "
-                                  f"(pid={child.get('process_pid')})", flush=True)
+                    continue
+                target_br = run.branches[target_idx]
+                if not target_br.child_sim_id:
+                    print(f"[orchestrator] nested_fork: target [{target_br.label}] "
+                          f"never started — skipping", flush=True)
+                    continue
+                print(f"[orchestrator] nested_fork: waiting for "
+                      f"[{target_br.label}] ({target_br.child_sim_id}) "
+                      f"to reach round {target_round}…", flush=True)
+                await _poll_parent_to_round(
+                    client=client, sim_id=target_br.child_sim_id,
+                    target_round=target_round,
+                    poll_interval=poll_interval, timeout_sec=branch_timeout,
+                )
+                # Generate fresh perturbations for the nested fork. Prompt
+                # context shifts to "after the initial perturbation has
+                # propagated…" so events are time-appropriate.
+                nested_seed_text = cfg.get("_seed_text", "")
+                nested_context = (
+                    f"NESTED FORK: parent branch '{target_br.label}' "
+                    f"has been running with this perturbation:\n"
+                    f"  {target_br.perturbation_text[:300]}\n\n"
+                    f"Generate {target_n} additional perturbations that "
+                    f"could occur at simulation round {target_round}, "
+                    f"AFTER the initial perturbation has had time to "
+                    f"propagate. Each should branch the cascade in a "
+                    f"distinct new direction."
+                )
+                nested_perturbations = generate_perturbations(
+                    seed_text=nested_seed_text,
+                    n=target_n,
+                    context=nested_context,
+                )
+                nested_perts_payload = [
+                    {
+                        "label": f"nested_{p['label']}",
+                        "event_text": p.get("event_text", ""),
+                        "mood_modifier": p.get("mood_modifier"),
+                    }
+                    for p in nested_perturbations
+                ]
+                print(f"[orchestrator] [nested fork] → /fork-now on "
+                      f"{target_br.child_sim_id} (N={target_n}, "
+                      f"parent_action=continue)…", flush=True)
+                nested = await client.fork_now(
+                    parent_sim_id=target_br.child_sim_id,
+                    perturbations=nested_perts_payload,
+                    max_rounds=horizon_rounds,
+                    parent_action="continue",
+                )
+                for p, child in zip(nested_perturbations, nested["children"]):
+                    grandchild_id = child.get("simulation_id")
+                    br = BranchResult(
+                        label=f"nested_{p['label']}",
+                        perturbation_text=p.get("event_text", ""),
+                        mood_modifier=p.get("mood_modifier"),
+                        parent_sim_id=target_br.child_sim_id,
+                    )
+                    br.child_sim_id = grandchild_id
+                    if p.get("mood_modifier"):
+                        br.mood_applied_counts = {"applied_via_fork_now": True}
+                    run.branches.append(br)
+                    print(f"  [nested_{p['label']}] → {grandchild_id} "
+                          f"(pid={child.get('process_pid')})", flush=True)
         else:
             print(f"[orchestrator] creating {len(run.branches)} branches via "
                   f"branch-counterfactual…", flush=True)

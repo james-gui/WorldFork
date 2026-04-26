@@ -308,9 +308,21 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
                 <div style={{paddingTop: 12, borderTop: "1px solid var(--rule)", width:"100%", marginTop: 12}}>
                   <div className="eyebrow" style={{marginBottom: 10}}>Reading the tree</div>
                   <div style={{fontSize: 12, lineHeight: 1.7, color:"var(--fg-2)"}}>
-                    The trunk is the shared parent population. At <span className="mono" style={{color:"var(--fg)"}}>r{SCENARIO.fork_round}</span> it forks into {BRANCHES.length} siblings, each receiving a distinct God-LLM event.
-                    {NESTED.length > 0 && (
-                      <> Branch <span className="mono" style={{color:"var(--fg)"}}>0</span> is forked again at <span className="mono" style={{color:"var(--fg)"}}>r{NESTED[0].fork_round}</span>.</>
+                    {BRANCHES.length === 0 ? (
+                      <>
+                        The trunk is the shared parent population. A future
+                        God-Agent will decide when to fork it on observed
+                        cascade dynamics — branches will appear here as that
+                        happens.
+                      </>
+                    ) : (
+                      <>
+                        The trunk is the shared parent population. It forked
+                        into <span className="mono" style={{color:"var(--fg)"}}>{BRANCHES.length}</span> siblings, each receiving a distinct God-LLM event.
+                        {NESTED.length > 0 && (
+                          <> {NESTED.length} grandchild{NESTED.length === 1 ? "" : "ren"} have nested-forked from active siblings.</>
+                        )}
+                      </>
                     )}
                     <br/><br/>
                     Color encodes the headline outcome — green = low probability, magenta = high.

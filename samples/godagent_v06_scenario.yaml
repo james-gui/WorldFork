@@ -1,0 +1,143 @@
+# WorldFork v0.6 scenario — God-Agent simulated branching pattern.
+#
+# Same FTX-collapse seed as v0.5, but with a richer multi-tier asymmetric
+# branching pattern that approximates what a real God-Agent would do:
+# wait, watch the cascade unfold, fork at the moments where the divergence
+# matters most. The exact rounds are pre-specified here because we don't
+# have the agent yet — but the structure (primary fork early, then nested
+# forks at staggered later rounds on different children) mimics the
+# decision pattern.
+#
+# Tree shape (with parent_action="continue", parent contributes a baseline):
+#
+#   root (parent, runs r0→r30)
+#   ├── branch[0] FORKED at r12 → 3 nested + 1 cont leaf  (4 leaves)
+#   ├── branch[1] FORKED at r15 → 3 nested + 1 cont leaf  (4 leaves)
+#   ├── branch[2] FORKED at r20 → 3 nested + 1 cont leaf  (4 leaves)
+#   ├── branch[3] (leaf)                                    (1 leaf)
+#   ├── branch[4] (leaf)                                    (1 leaf)
+#   ├── branch[5] (leaf)                                    (1 leaf)
+#   └── no_perturbation (parent's own r6→r30 line)          (1 leaf)
+#                                                  TOTAL: 16 leaves
+#
+# Wall-time: bootstrap (~3 min) + parent r0→r6 (~1 min) +
+#            primary fork-now → 6 children r6→r30 (~5 min) +
+#            staggered nested forks → 9 grandchildren rN→r30 (~3 min) +
+#            classify 16 leaves (~1 min) ≈ 13 min.
+# Cost:     ~$2.50 in OpenRouter (30 rounds × 16 sims × persona LLM).
+
+name: ftx_collapse_godagent_v06
+description: >
+  Leaked Alameda balance sheet + Binance dumping FTT. Does FTX honor
+  withdrawals or does the cascade go full Lehman, dragging BTC down 20%+ as
+  forced selling and contagion fear spread across the market? This run
+  uses a multi-tier branching pattern simulating a future God-Agent
+  deciding when to fork on observed dynamics.
+
+seed_document: ftx_collapse_seed.txt
+
+simulation:
+  horizon_rounds: 30
+  agents: 16
+  platform: reddit
+
+branching:
+  state_fork: true
+  fork_round: 6                # primary fork after the initial reaction settles
+  num_branches: 6              # wider primary fan than v0.5 (was 8 at r4)
+  perturbation_strategy: god_llm
+  god_llm_model: google/gemini-3.1-flash-lite-preview
+  god_llm_prompt: |
+    You are simulating plausible exogenous events around the FTX collapse.
+    Given the seed scenario above, generate {N} plausible events that could
+    realistically occur ~3 hours after the initial leaked-balance-sheet
+    moment. Each event should:
+      - Be realistic (sourceable to a plausible actor — CZ, SBF, Caroline,
+        Tether, Coinbase, regulators, on-chain whales)
+      - Be distinct (push the cascade in different directions)
+      - Be specific (named actor, concrete action, specific amount or price)
+    Span a range from FTX-saving (CZ acquisition signal, white-knight cash
+    injection, withdrawal queue clears) to FTX-killing (FTX halts
+    withdrawals, SOL crashes 50%, contagion to a major lender).
+    Output as a JSON array of {round, headline, body} objects.
+
+  # Multiple staggered nested forks — each kicks in once its target child
+  # reaches the specified round. Targets are zero-indexed against the
+  # primary `num_branches` list (ordered by perturbation_generator output).
+  nested_forks:
+    - target_branch_index: 0
+      fork_round: 12
+      num_branches: 3
+    - target_branch_index: 1
+      fork_round: 15
+      num_branches: 3
+    - target_branch_index: 2
+      fork_round: 20
+      num_branches: 3
+
+# Outcome variables — same as v0.5.
+outcomes:
+  - name: btc_20pct_drop_probability
+    description: >
+      Based on the agents' discussions, posts, sentiment, concrete price
+      predictions, on-chain reports, and any whale moves discussed in this
+      branch, estimate the probability that BTC drops 20%+ from its current
+      price ($20,500) within the next 24 hours of simulated time.
+    type: float
+    range: [0, 1]
+    primary: true
+
+  - name: ftx_withdrawal_halt_probability
+    description: >
+      Probability that FTX halts withdrawals within the next 24 simulated
+      hours, inferred from agent discussions of withdrawal queue length,
+      SBF statements, on-chain outflow signals, and prior-collapse
+      comparisons.
+    type: float
+    range: [0, 1]
+
+  - name: contagion_breadth_score
+    description: >
+      How wide is the contagion narrative? 0 = isolated to FTX/FTT/SOL only;
+      5 = mid-cap exchanges and lenders also dragged in; 10 = systemic
+      crypto crisis discussion (BTC/ETH lows, stablecoin contagion,
+      regulatory intervention talk). Score this branch's typical post.
+    type: float
+    range: [0, 10]
+
+  - name: panic_score
+    description: >
+      Average sentiment of branch posts about the cascade. 0 = total panic /
+      "get out now" rhetoric; 5 = mixed / debated; 10 = calm / dismissive
+      of contagion risk.
+    type: float
+    range: [0, 10]
+
+  - name: cz_acquisition_mentioned
+    description: "Did any agent post about CZ/Binance acquiring FTX (rumor or fact)?"
+    type: bool
+
+  - name: sol_dump_observed
+    description: "Did agents report SOL dropping 30%+ from its $32 starting price?"
+    type: bool
+
+  - name: stablecoin_contagion_concern
+    description: "Did agents express concern about USDT/USDC contagion?"
+    type: bool
+
+  - name: regulator_action_anticipated
+    description: "Did 2+ agents mention SEC/CFTC/DOJ likely involvement?"
+    type: bool
+
+validity_checks:
+  min_active_agents: 10
+  min_posts_about_topic: 8
+  completed_all_rounds: true
+
+aggregation:
+  primary_split: btc_20pct_drop_probability
+  cluster_summarize: true
+  report_confidence_intervals: true
+
+budget:
+  max_usd: 5.00
