@@ -24,6 +24,8 @@ function App() {
   const [scenario, setScenario] = useS(null);  // adapted lineage payload
   const [scenarioErr, setScenarioErr] = useS(null);
   const [autoStartedAt, setAutoStartedAt] = useS(null); // when /start was just called
+  const [backendErr, setBackendErr] = useS(null);  // surface listRuns failures
+  const runsRef = useR([]);  // stable lookup so polling doesn't resubscribe on every refresh
   const [tweaks, setTweak] = window.useTweaks ? window.useTweaks(TWEAK_DEFAULTS) : [TWEAK_DEFAULTS, () => {}];
 
   // Apply tweaks
@@ -47,37 +49,43 @@ function App() {
   const refreshRuns = async () => {
     try {
       const list = await window.WF_API.listRuns();
+      runsRef.current = list;
       setRuns(list);
-      // Default-select the most recent if nothing selected yet
+      setBackendErr(null);
       setScenarioId(prev => prev || (list[0]?.id || null));
       return list;
     } catch (e) {
       console.error("listRuns failed", e);
+      setBackendErr(e.message || String(e));
       return [];
     }
   };
   useE(() => { refreshRuns(); }, []);
 
   // ── Whenever scenarioId changes, fetch its full state ───────────────
+  // Depends on scenarioId ONLY so we don't refetch every time runs[] gets a
+  // new array reference. Look up the run-list entry via the ref.
   useE(() => {
     if (!scenarioId) { setScenario(null); return; }
     let cancelled = false;
-    const run = runs.find(r => r.id === scenarioId);
     setScenarioErr(null);
+    const run = runsRef.current.find(r => r.id === scenarioId);
     window.WF_API.getScenario(scenarioId, run)
       .then(sc => { if (!cancelled) setScenario(sc); })
       .catch(e => { if (!cancelled) { setScenarioErr(e.message); setScenario(null); }});
     return () => { cancelled = true; };
-  }, [scenarioId, runs]);
+  }, [scenarioId]);
 
   // ── Live polling for in-flight runs ─────────────────────────────────
+  // Same — only re-subscribes when scenarioId changes or the active scenario
+  // hits a terminal phase. Otherwise the interval persists across renders.
   useE(() => {
     if (!scenarioId) return;
     if (scenario && TERMINAL_PHASES.has(scenario.phase)) return;
     if (!scenario) return;
     const t = setInterval(async () => {
       try {
-        const run = runs.find(r => r.id === scenarioId);
+        const run = runsRef.current.find(r => r.id === scenarioId);
         const sc = await window.WF_API.getScenario(scenarioId, run);
         setScenario(sc);
         if (TERMINAL_PHASES.has(sc.phase)) refreshRuns();
@@ -130,6 +138,25 @@ function App() {
 
   return (
     <>
+      {backendErr && (
+        <div style={{
+          background: "var(--bad)", color: "white", padding: "10px 32px",
+          fontSize: 13, fontFamily: "var(--font-mono)", display: "flex",
+          justifyContent: "space-between", alignItems: "center"
+        }}>
+          <span>⚠ Backend unreachable — /api/runs failed: {backendErr}</span>
+          <button className="btn ghost" style={{borderColor: "white", color: "white"}}
+            onClick={refreshRuns}>retry</button>
+        </div>
+      )}
+      {!backendErr && runs.length === 0 && scenario === null && (
+        <div style={{
+          background: "var(--bg-2)", color: "var(--fg-2)", padding: "8px 32px",
+          fontSize: 12, fontFamily: "var(--font-mono)", borderBottom: "1px solid var(--rule)"
+        }}>
+          No runs yet — click "▶ Start ensemble" on the home page to launch your first one.
+        </div>
+      )}
       <div className="topbar">
         <div className="brand">
           <div className="brand-mark">world<em>/</em>fork</div>

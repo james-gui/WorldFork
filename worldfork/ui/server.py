@@ -71,6 +71,37 @@ app = Flask(__name__)
 _registry_lock = threading.Lock()
 
 
+# mtime-keyed disk cache for read-mostly files (manifest JSON + scenario YAML).
+# Each lineage poll reads both; with N concurrent viewers + sub-second polling
+# we'd otherwise re-parse 100s of KB of JSON/YAML per second on a static file.
+_FILE_CACHE: dict = {}  # path → (mtime, size, parsed_value)
+
+def _load_cached(path: str, parser):
+    """Cache-by-mtime helper. Returns parser(read(path)) or None on error."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = str(path)
+    entry = _FILE_CACHE.get(key)
+    if entry and entry[0] == st.st_mtime_ns and entry[1] == st.st_size:
+        return entry[2]
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            value = parser(f)
+    except Exception:
+        _FILE_CACHE.pop(key, None)
+        return None
+    _FILE_CACHE[key] = (st.st_mtime_ns, st.st_size, value)
+    return value
+
+def _load_json_cached(path: str):
+    return _load_cached(path, json.load)
+
+def _load_yaml_cached(path: str):
+    return _load_cached(path, yaml.safe_load)
+
+
 def _load_registry() -> dict:
     if not REGISTRY_PATH.exists():
         return {}
@@ -522,10 +553,7 @@ def api_run_lineage(run_id: str):
         manifest_path = _extract_manifest_path(log_text)
     manifest = None
     if manifest_path and Path(manifest_path).exists():
-        try:
-            manifest = json.loads(Path(manifest_path).read_text())
-        except Exception:
-            manifest = None
+        manifest = _load_json_cached(manifest_path)
 
     outcome_schema = []
     distributions = {}  # var_name -> { values, mean, median, q25, q75, n }
@@ -575,12 +603,9 @@ def api_run_lineage(run_id: str):
         if not scen_path:
             scen_path = str(DEMO_SCENARIO)
 
-        try:
-            with open(scen_path) as f:
-                scen = yaml.safe_load(f)
+        scen = _load_yaml_cached(scen_path)
+        if scen:
             outcome_schema = scen.get("outcomes") or []
-        except Exception:
-            pass
 
         # If the run wasn't pinned, derive the schema from the manifest itself
         # by inferring types from observed outcome values. This catches the
