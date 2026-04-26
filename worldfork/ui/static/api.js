@@ -58,13 +58,17 @@
       runner_status: node.runner_status,
     }));
 
-    // Build nested grandchildren — flatten any depth-2 nodes
+    // Flatten nested descendants (any depth ≥ 2) into a single list, tagging
+    // each entry with its immediate parent's label and its depth from root.
+    // tree.jsx uses `parent` to wire each node under its real parent rather
+    // than dumping them all under primary[0] (the v0.5 shape).
     const nested = [];
-    for (const p of primaries) {
-      for (const gc of (p.children || [])) {
+    function walkDescendants(node, depth) {
+      for (const gc of (node.children || [])) {
         nested.push({
           label: gc.perturbation_label || gc.label || gc.sim_id,
-          parent: p.perturbation_label || p.label,
+          parent: node.perturbation_label || node.label,
+          depth,
           child_sim_id: gc.sim_id,
           valid: gc.valid !== false,
           fork_round: gc.fork_round,
@@ -76,7 +80,11 @@
           total_rounds: safe(gc.total_rounds, 0),
           runner_status: gc.runner_status,
         });
+        walkDescendants(gc, depth + 1);
       }
+    }
+    for (const p of primaries) {
+      walkDescendants(p, 2);
     }
 
     const validBranches = [...branches, ...nested].filter(b => b.valid);

@@ -18,8 +18,10 @@ function rampColor(v, min, max) {
 }
 
 /* ---- layout ----------------------------------------------------------
- * Build a node tree:
- *   root → primary[i] → nested[j] for any j whose parent === primary[i].label
+ * Build a node tree of arbitrary depth:
+ *   root → primary[i] → nested descendants (each tagged with `parent`
+ *   label and `depth`). A depth-3 entry attaches under whichever
+ *   nested node it actually forked from — same mechanic, recursively.
  * Then assign X via tidy-tree (each node's x = centroid of its children;
  * leaves get unique slots), and Y by depth.
  */
@@ -49,38 +51,54 @@ function buildTree(scenario, branches, nested, options) {
     });
   }
 
-  branches.slice(0, revealCount).forEach((b, i) => {
+  // First pass: lay down primaries as leaves.
+  const labelToNode = {};
+  branches.slice(0, revealCount).forEach((b) => {
     const v = b.outcomes ? b.outcomes[scenario.primary] : null;
     const node = {
       id: `b_${b.label}`, type: "leaf", label: b.label,
       branch: b, value: v, fork_round: scenario.fork_round,
       children: [],
     };
-    // Attach nested grandchildren under whichever primary they actually
-    // forked from. api.js tags each nested with `parent` = the primary's
-    // label, so we filter rather than hardcoding branch[0] (the v0.5 shape).
-    const myNested = (includeNested && nested)
-      ? nested.filter(nb => nb.parent === b.label)
-      : [];
-    if (myNested.length > 0) {
-      node.type = "fork";
-      node.children.push({
-        id: `b_${b.label}__cont`, type: "leaf", label: b.label, branch: b, value: v,
-        fork_round: myNested[0].fork_round, isContinuation: true,
-        children: [],
-      });
-      myNested.forEach((nb) => {
-        const nv = nb.outcomes ? nb.outcomes[scenario.primary] : null;
-        node.children.push({
-          id: `n_${nb.label}`, type: "leaf", label: nb.label,
-          branch: nb, value: nv, fork_round: nb.fork_round,
-          nested: true,
-          children: [],
-        });
-      });
-    }
+    labelToNode[b.label] = node;
     root.children.push(node);
   });
+
+  // Second pass: attach nested descendants of any depth under whichever
+  // node forked them. api.js tags each `nb` with `parent` = the immediate
+  // parent's label and `depth` = its depth from root. Sort by depth so we
+  // attach depth-2 first (creating fork-shaped parents that depth-3 can
+  // then attach onto).
+  if (includeNested && nested && nested.length > 0) {
+    const byDepth = [...nested].sort((a, b) => (a.depth || 2) - (b.depth || 2));
+    for (const nb of byDepth) {
+      const parent = labelToNode[nb.parent];
+      if (!parent) continue;
+      // First child added → promote the parent to a fork node and inject
+      // its own continuation leaf so the parent's trajectory is still
+      // visible alongside its newly-spawned children.
+      if (parent.type === "leaf") {
+        parent.type = "fork";
+        const pv = parent.branch?.outcomes
+          ? parent.branch.outcomes[scenario.primary] : null;
+        parent.children.push({
+          id: `${parent.id}__cont`, type: "leaf", label: parent.label,
+          branch: parent.branch, value: pv,
+          fork_round: nb.fork_round, isContinuation: true,
+          children: [],
+        });
+      }
+      const nv = nb.outcomes ? nb.outcomes[scenario.primary] : null;
+      const child = {
+        id: `n_${nb.label}`, type: "leaf", label: nb.label,
+        branch: nb, value: nv, fork_round: nb.fork_round,
+        nested: true,
+        children: [],
+      };
+      parent.children.push(child);
+      labelToNode[nb.label] = child;
+    }
+  }
 
   // Tidy layout: x by recursive leaf count, y by depth.
   const NODE_GAP_X = 110;

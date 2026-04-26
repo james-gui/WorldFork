@@ -587,6 +587,86 @@ async def run_ensemble(
                     "num_branches": legacy.get("num_branches", 2),
                 }]
 
+            # Each nested_forks entry's children get appended to run.branches
+            # as a contiguous slab; remember the index slab so a later
+            # tertiary_forks block can reference "nested_forks[i]'s j-th child"
+            # without the caller having to count global indices.
+            nested_child_indices: list[list[int]] = []
+
+            async def _do_followup_fork(
+                target_br: BranchResult,
+                target_round: int,
+                target_n: int,
+                label_prefix: str,
+                fork_kind: str,
+            ) -> list[int]:
+                """Wait for target_br to reach target_round, then /fork-now
+                target_n perturbed children. Append them to run.branches and
+                return the indices of the appended branches.
+                """
+                if not target_br.child_sim_id:
+                    print(f"[orchestrator] {fork_kind}: target [{target_br.label}] "
+                          f"never started — skipping", flush=True)
+                    return []
+                print(f"[orchestrator] {fork_kind}: waiting for "
+                      f"[{target_br.label}] ({target_br.child_sim_id}) "
+                      f"to reach round {target_round}…", flush=True)
+                await _poll_parent_to_round(
+                    client=client, sim_id=target_br.child_sim_id,
+                    target_round=target_round,
+                    poll_interval=poll_interval, timeout_sec=branch_timeout,
+                )
+                fu_seed_text = cfg.get("_seed_text", "")
+                fu_context = (
+                    f"{fork_kind.upper()} FORK: parent branch "
+                    f"'{target_br.label}' has been running with this "
+                    f"perturbation:\n  {target_br.perturbation_text[:300]}\n\n"
+                    f"Generate {target_n} additional perturbations that "
+                    f"could occur at simulation round {target_round}, "
+                    f"AFTER the initial perturbation has had time to "
+                    f"propagate. Each should branch the cascade in a "
+                    f"distinct new direction."
+                )
+                fu_perturbations = generate_perturbations(
+                    seed_text=fu_seed_text,
+                    n=target_n,
+                    context=fu_context,
+                )
+                fu_payload = [
+                    {
+                        "label": f"{label_prefix}{p['label']}",
+                        "event_text": p.get("event_text", ""),
+                        "mood_modifier": p.get("mood_modifier"),
+                    }
+                    for p in fu_perturbations
+                ]
+                print(f"[orchestrator] [{fork_kind} fork] → /fork-now on "
+                      f"{target_br.child_sim_id} (N={target_n}, "
+                      f"parent_action=continue)…", flush=True)
+                forked = await client.fork_now(
+                    parent_sim_id=target_br.child_sim_id,
+                    perturbations=fu_payload,
+                    max_rounds=horizon_rounds,
+                    parent_action="continue",
+                )
+                indices: list[int] = []
+                for p, child in zip(fu_perturbations, forked["children"]):
+                    grandchild_id = child.get("simulation_id")
+                    br = BranchResult(
+                        label=f"{label_prefix}{p['label']}",
+                        perturbation_text=p.get("event_text", ""),
+                        mood_modifier=p.get("mood_modifier"),
+                        parent_sim_id=target_br.child_sim_id,
+                    )
+                    br.child_sim_id = grandchild_id
+                    if p.get("mood_modifier"):
+                        br.mood_applied_counts = {"applied_via_fork_now": True}
+                    run.branches.append(br)
+                    indices.append(len(run.branches) - 1)
+                    print(f"  [{label_prefix}{p['label']}] → {grandchild_id} "
+                          f"(pid={child.get('process_pid')})", flush=True)
+                return indices
+
             for nested_cfg in nested_list:
                 if not run.branches:
                     break
@@ -597,70 +677,48 @@ async def run_ensemble(
                     print(f"[orchestrator] nested_fork: target_branch_index={target_idx} "
                           f"out of range (have {len(run.branches)} branches) — skipping",
                           flush=True)
+                    nested_child_indices.append([])
                     continue
-                target_br = run.branches[target_idx]
-                if not target_br.child_sim_id:
-                    print(f"[orchestrator] nested_fork: target [{target_br.label}] "
-                          f"never started — skipping", flush=True)
-                    continue
-                print(f"[orchestrator] nested_fork: waiting for "
-                      f"[{target_br.label}] ({target_br.child_sim_id}) "
-                      f"to reach round {target_round}…", flush=True)
-                await _poll_parent_to_round(
-                    client=client, sim_id=target_br.child_sim_id,
+                indices = await _do_followup_fork(
+                    target_br=run.branches[target_idx],
                     target_round=target_round,
-                    poll_interval=poll_interval, timeout_sec=branch_timeout,
+                    target_n=target_n,
+                    label_prefix="nested_",
+                    fork_kind="nested",
                 )
-                # Generate fresh perturbations for the nested fork. Prompt
-                # context shifts to "after the initial perturbation has
-                # propagated…" so events are time-appropriate.
-                nested_seed_text = cfg.get("_seed_text", "")
-                nested_context = (
-                    f"NESTED FORK: parent branch '{target_br.label}' "
-                    f"has been running with this perturbation:\n"
-                    f"  {target_br.perturbation_text[:300]}\n\n"
-                    f"Generate {target_n} additional perturbations that "
-                    f"could occur at simulation round {target_round}, "
-                    f"AFTER the initial perturbation has had time to "
-                    f"propagate. Each should branch the cascade in a "
-                    f"distinct new direction."
+                nested_child_indices.append(indices)
+
+            # Tertiary forks — drill into a child produced by an earlier
+            # nested_forks entry. This is the "fork of a fork" primitive:
+            # the same /fork-now mechanic, just targeting a grandchild
+            # instead of a primary child.
+            tertiary_list = (cfg.get("branching") or {}).get("tertiary_forks") or []
+            for tert_cfg in tertiary_list:
+                nested_idx = int(tert_cfg.get("target_nested_index", 0))
+                within_idx = int(tert_cfg.get("target_within", 0))
+                target_round = int(tert_cfg.get("fork_round", fork_round + 8))
+                target_n = int(tert_cfg.get("num_branches", 2))
+                if nested_idx >= len(nested_child_indices):
+                    print(f"[orchestrator] tertiary_fork: target_nested_index="
+                          f"{nested_idx} out of range "
+                          f"(have {len(nested_child_indices)} nested fork(s)) "
+                          f"— skipping", flush=True)
+                    continue
+                indices = nested_child_indices[nested_idx]
+                if within_idx >= len(indices):
+                    print(f"[orchestrator] tertiary_fork: target_within="
+                          f"{within_idx} out of range "
+                          f"(nested fork {nested_idx} has {len(indices)} "
+                          f"children) — skipping", flush=True)
+                    continue
+                target_br = run.branches[indices[within_idx]]
+                await _do_followup_fork(
+                    target_br=target_br,
+                    target_round=target_round,
+                    target_n=target_n,
+                    label_prefix="tertiary_",
+                    fork_kind="tertiary",
                 )
-                nested_perturbations = generate_perturbations(
-                    seed_text=nested_seed_text,
-                    n=target_n,
-                    context=nested_context,
-                )
-                nested_perts_payload = [
-                    {
-                        "label": f"nested_{p['label']}",
-                        "event_text": p.get("event_text", ""),
-                        "mood_modifier": p.get("mood_modifier"),
-                    }
-                    for p in nested_perturbations
-                ]
-                print(f"[orchestrator] [nested fork] → /fork-now on "
-                      f"{target_br.child_sim_id} (N={target_n}, "
-                      f"parent_action=continue)…", flush=True)
-                nested = await client.fork_now(
-                    parent_sim_id=target_br.child_sim_id,
-                    perturbations=nested_perts_payload,
-                    max_rounds=horizon_rounds,
-                    parent_action="continue",
-                )
-                for p, child in zip(nested_perturbations, nested["children"]):
-                    grandchild_id = child.get("simulation_id")
-                    br = BranchResult(
-                        label=f"nested_{p['label']}",
-                        perturbation_text=p.get("event_text", ""),
-                        mood_modifier=p.get("mood_modifier"),
-                        parent_sim_id=target_br.child_sim_id,
-                    )
-                    br.child_sim_id = grandchild_id
-                    if p.get("mood_modifier"):
-                        br.mood_applied_counts = {"applied_via_fork_now": True}
-                    run.branches.append(br)
-                    print(f"  [nested_{p['label']}] → {grandchild_id} "
-                          f"(pid={child.get('process_pid')})", flush=True)
         else:
             print(f"[orchestrator] creating {len(run.branches)} branches via "
                   f"branch-counterfactual…", flush=True)

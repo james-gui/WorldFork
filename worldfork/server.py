@@ -54,7 +54,7 @@ REGISTRY_PATH = RUNS_DIR / "_demo_registry.json"
 
 DEMO_SCENARIO = Path(os.environ.get(
     "WF_DEMO_SCENARIO",
-    str(PROJECT_ROOT / "samples" / "godagent_v06_scenario.yaml"),
+    str(PROJECT_ROOT / "samples" / "godagent_v07_scenario.yaml"),
 ))
 DEMO_NUM_BRANCHES = int(os.environ.get("WF_DEMO_NUM_BRANCHES", "6"))
 BACKEND_URL = os.environ.get("WF_BACKEND", "http://localhost:5001").rstrip("/")
