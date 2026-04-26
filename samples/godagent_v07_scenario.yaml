@@ -81,7 +81,7 @@ branching:
 
 # Outcome variables — same as v0.6.
 outcomes:
-  - name: btc_20pct_drop_probability
+  - name: btc_20pct_or_more_drop_probability
     description: >
       Based on the agents' discussions, posts, sentiment, concrete price
       predictions, on-chain reports, and any whale moves discussed in this
@@ -139,7 +139,7 @@ validity_checks:
   completed_all_rounds: true
 
 aggregation:
-  primary_split: btc_20pct_drop_probability
+  primary_split: btc_20pct_or_more_drop_probability
   cluster_summarize: true
   report_confidence_intervals: true
 
