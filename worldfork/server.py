@@ -363,6 +363,11 @@ def api_run_lineage(run_id: str):
         r"verifying parent (sim_[a-zA-Z0-9]+)",
         r"starting parent (sim_[a-zA-Z0-9]+)",
         r"parent_sim_id[\"':= ]+(sim_[a-zA-Z0-9]+)",
+        # Surface the parent sim_id during bootstrap (step 4 prints
+        # "→ simulation_id=sim_xxx" several minutes before "verifying
+        # parent" appears). Without this the v2 root node is unclickable
+        # for the entire ~3-min bootstrap phase.
+        r"simulation_id=(sim_[a-zA-Z0-9]+)",
     ]:
         m = re.search(rx, log_text)
         if m:

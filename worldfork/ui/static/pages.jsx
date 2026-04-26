@@ -169,22 +169,26 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
     const key = selected.replace(/__cont$/, "");
     if (key === "root") {
       // Pre-fork / pre-classify root click: synthesize a branch-shaped object
-      // from rootLive so BranchDetail can render parent's round + status.
+      // so BranchDetail always renders something. Three states:
+      //  - rootBranch present (post-classify) → use baseline outcomes
+      //  - rootLive present (parent running pre-fork) → surface live state
+      //  - neither (early bootstrap, no sim_id yet) → placeholder with phase
       if (scenario.rootBranch) return scenario.rootBranch;
       const live = scenario.rootLive;
-      if (!live) return null;
       return {
         label: "parent (root)",
-        child_sim_id: live.sim_id,
+        child_sim_id: live?.sim_id || scenario.parent_sim_id || null,
         valid: true,
-        perturbation: "(no perturbation — parent running normally)",
+        perturbation: live
+          ? "(no perturbation — parent running normally)"
+          : `(parent sim not yet created — phase: ${scenario.phase || "initializing"})`,
         mood: "—",
         reasoning: "",
         outcomes: null,
         fork_round: scenario.fork_round,
-        current_round: live.current_round,
-        total_rounds: live.total_rounds,
-        runner_status: live.runner_status,
+        current_round: live?.current_round ?? 0,
+        total_rounds: live?.total_rounds ?? scenario.horizon_rounds ?? 0,
+        runner_status: live?.runner_status || "—",
         isRoot: true,
       };
     }
