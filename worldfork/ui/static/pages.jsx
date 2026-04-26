@@ -97,7 +97,7 @@ function HomePage({ scenario, runs, loading, err, onStart, onOpenRun, onPickScen
           </div>
           <div className="lock-line">
             <span style={{fontFamily: "var(--font-mono)"}}>⌥</span>
-            Live demo. Backend: WorldFork-v1 on :5050.
+            Live demo. MiroShark backend on :5001.
           </div>
         </div>
       </section>
