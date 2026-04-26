@@ -37,7 +37,7 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
-from flask import Flask, abort, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 import urllib.parse as _urllib_parse
 import urllib.request as _urllib_request
 
@@ -528,79 +528,99 @@ def api_run_lineage(run_id: str):
 
 @app.route("/api/run/<run_id>/graph")
 def api_run_graph(run_id: str):
-    """Return the Neo4j knowledge graph for the run's bootstrap project.
+    """Per-branch agent interaction network — proxies MiroShark's
+    /api/simulation/<sim_id>/interaction-network.
 
-    The graph_id is created during bootstrap (one per parent sim) and shared
-    across all branches under that parent. graph_memory_updater on the
-    MiroShark side keeps adding entities/edges as agents reason, so polling
-    this endpoint surfaces graph evolution within a branch.
+    Nodes are agents (with degree, influence, stance, primary_platform);
+    edges are aggregated interactions (likes, comments, follows, reposts)
+    with weight + per-type counts. While a branch is running MiroShark
+    recomputes from actions.jsonl every call (no cache), so polling shows
+    the network evolving over rounds. Once the branch finishes, the cache
+    locks the final state.
+
+    Caller passes `?sim=<sim_id>` for the branch to inspect; without it
+    we default to the run's root parent sim.
     """
-    rec = _get_run(run_id)
-    if not rec:
-        # Standalone-manifest fallback (mirrors lineage)
-        standalone = RUNS_DIR / f"{run_id}.json"
-        if standalone.exists():
-            try:
-                m = _load_json_cached(str(standalone)) or {}
-                rec = {
-                    "log_path": "",
-                    "manifest_path": str(standalone),
-                    "scenario_path": None,
-                }
-            except Exception:
-                rec = None
+    sim_id = request.args.get("sim")
+
+    if not sim_id:
+        # Default to the root parent sim, scraped from the orchestrator log.
+        rec = _get_run(run_id)
         if not rec:
-            return jsonify({"error": "unknown run_id"}), 404
+            standalone = RUNS_DIR / f"{run_id}.json"
+            if standalone.exists():
+                try:
+                    m = _load_json_cached(str(standalone)) or {}
+                    sim_id = m.get("parent_sim_id")
+                except Exception:
+                    sim_id = None
+            if not sim_id:
+                return jsonify({"error": "unknown run_id"}), 404
+        else:
+            log_path = Path(rec.get("log_path", ""))
+            log_text = _read_log_tail(log_path, 5000) if log_path.exists() else ""
+            for rx in [
+                r"verifying parent (sim_[a-zA-Z0-9]+)",
+                r"starting parent (sim_[a-zA-Z0-9]+)",
+            ]:
+                m = re.search(rx, log_text)
+                if m:
+                    sim_id = m.group(1)
+                    break
+            if not sim_id:
+                mp = rec.get("manifest_path")
+                if mp and Path(mp).exists():
+                    try:
+                        sim_id = (_load_json_cached(mp) or {}).get("parent_sim_id")
+                    except Exception:
+                        pass
+        if not sim_id:
+            return jsonify({"run_id": run_id, "sim_id": None, "graph": None,
+                            "error": "couldn't resolve sim_id for run"})
 
-    log_path = Path(rec.get("log_path", ""))
-    log_text = _read_log_tail(log_path, 5000) if log_path.exists() else ""
-
-    graph_id = None
-    m = re.search(r"graph_id=([a-f0-9-]+)", log_text)
-    if m:
-        graph_id = m.group(1)
-
-    if not graph_id:
-        return jsonify({"run_id": run_id, "graph_id": None, "graph": None,
-                        "error": "graph_id not found in run log"})
-
-    url = f"{BACKEND_URL}/api/graph/data/{graph_id}"
+    url = f"{BACKEND_URL}/api/simulation/{sim_id}/interaction-network"
     try:
         with _urllib_request.urlopen(url, timeout=10) as resp:
             body = json.loads(resp.read())
     except Exception as e:
-        return jsonify({"run_id": run_id, "graph_id": graph_id, "graph": None,
+        return jsonify({"run_id": run_id, "sim_id": sim_id, "graph": None,
                         "error": str(e)})
 
     if not body.get("success"):
-        return jsonify({"run_id": run_id, "graph_id": graph_id, "graph": None,
-                        "error": body.get("error")})
+        return jsonify({"run_id": run_id, "sim_id": sim_id, "graph": None,
+                        "error": body.get("error") or body.get("message") or "unknown error"})
 
     data = body.get("data") or {}
-    # Slim payload — drop fields the UI doesn't need so a 200-edge graph
-    # stays under a few KB across the polling channel.
     nodes = [
         {
-            "id": n.get("uuid"),
+            "id": n.get("id") or n.get("name"),
             "name": n.get("name"),
-            "type": (n.get("labels") or ["Entity"])[0],
-            "summary": n.get("summary"),
+            "type": n.get("primary_platform") or "agent",
+            "stance": n.get("stance"),
+            "platforms": n.get("platforms") or [],
+            "in_degree": n.get("in_degree", 0),
+            "out_degree": n.get("out_degree", 0),
+            "total_degree": n.get("total_degree", 0),
+            "influence_score": n.get("influence_score", 0),
+            "rank": n.get("rank"),
         }
         for n in (data.get("nodes") or [])
     ]
     edges = [
         {
-            "source": e.get("source_node_uuid"),
-            "target": e.get("target_node_uuid"),
-            "type": e.get("name") or e.get("fact_type"),
-            "fact": e.get("fact"),
+            "source": e.get("source"),
+            "target": e.get("target"),
+            "type": ", ".join((e.get("types") or {}).keys()) or "INTERACTION",
+            "weight": e.get("weight", 1),
+            "is_cross_platform": e.get("is_cross_platform", False),
         }
         for e in (data.get("edges") or [])
-        if e.get("source_node_uuid") and e.get("target_node_uuid")
+        if e.get("source") and e.get("target")
     ]
     return jsonify({
-        "run_id": run_id, "graph_id": graph_id,
+        "run_id": run_id, "sim_id": sim_id,
         "node_count": len(nodes), "edge_count": len(edges),
+        "insights": data.get("insights") or {},
         "graph": {"nodes": nodes, "edges": edges},
     })
 

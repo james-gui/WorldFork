@@ -1,25 +1,37 @@
-/* GraphView — hand-rolled force-directed knowledge graph.
+/* GraphView — agent interaction network for a branch.
  *
- * MiroShark uses d3-force (~50KB). This is a tiny replacement (no deps):
- * Verlet integrator with O(N²) repulsion, spring links, gravity-to-center,
- * damping. For the ~25-node graphs WorldFork bootstraps build, that's
- * fine — runs <30ms per tick and settles in ~150 ticks.
+ * MiroShark uses d3-force (~50KB) for this. Replaced with a tiny
+ * dependency-free Verlet integrator: O(N²) repulsion, spring links
+ * (length scales by edge weight), gravity-to-center, damping. For the
+ * ~20-node interaction graphs typical of a branch this settles in
+ * ~150 ticks (<40ms total).
  *
- * Renders as SVG: circles for nodes (color by entity type), lines for
- * edges, hover labels. Polls /api/run/<id>/graph every 8s for updates so
- * the user sees agents adding entities/edges via graph_memory_updater.
+ * Backend: /api/run/<run_id>/graph?sim=<sim_id> proxies MiroShark's
+ * /api/simulation/<id>/interaction-network. Polled every 8s so the
+ * graph evolves while the branch runs (MiroShark recomputes from
+ * actions.jsonl until it caches network.json on completion).
  */
 
 const { useState: useStateG, useEffect: useEffectG, useRef: useRefG, useMemo: useMemoG } = React;
 
-// Stable per-type color. Hashes the type name to oklch hue so adding
-// new entity types doesn't require palette updates.
-function colorForType(type) {
-  if (!type) return "oklch(0.7 0.05 240)";
+// Color by stance ("supportive" / "neutral" / "skeptical" / "opposed") with
+// a fallback per-platform palette. Mirrors MiroShark's node coloring.
+const STANCE_COLOR = {
+  supportive: "oklch(0.78 0.16 145)",   // green
+  positive:   "oklch(0.78 0.16 145)",
+  neutral:    "oklch(0.75 0.04 240)",   // muted slate
+  skeptical:  "oklch(0.78 0.14 60)",    // amber
+  opposed:    "oklch(0.7 0.18 25)",     // red
+  negative:   "oklch(0.7 0.18 25)",
+};
+
+function colorForNode(n) {
+  if (n.stance && STANCE_COLOR[n.stance.toLowerCase()]) return STANCE_COLOR[n.stance.toLowerCase()];
+  // Fallback: hash primary platform / type name to a stable hue
+  const t = n.type || n.primary_platform || "agent";
   let h = 0;
-  for (let i = 0; i < type.length; i++) h = (h * 31 + type.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  return `oklch(0.72 0.16 ${hue})`;
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+  return `oklch(0.72 0.14 ${h % 360})`;
 }
 
 function layoutGraph(nodes, edges, width, height) {
@@ -90,7 +102,7 @@ function layoutGraph(nodes, edges, width, height) {
   return { nodes: positioned, links };
 }
 
-function GraphView({ runId }) {
+function GraphView({ runId, simId }) {
   const [data, setData] = useStateG(null);
   const [err, setErr] = useStateG(null);
   const [hovered, setHovered] = useStateG(null);
@@ -98,7 +110,6 @@ function GraphView({ runId }) {
   const wrapRef = useRefG(null);
   const [width, setWidth] = useStateG(440);
 
-  // Track container width for responsive sizing
   useEffectG(() => {
     if (!wrapRef.current) return;
     const ro = new ResizeObserver(entries => {
@@ -111,9 +122,12 @@ function GraphView({ runId }) {
   useEffectG(() => {
     if (!runId) return;
     let cancelled = false;
+    const url = simId
+      ? `/api/run/${encodeURIComponent(runId)}/graph?sim=${encodeURIComponent(simId)}`
+      : `/api/run/${encodeURIComponent(runId)}/graph`;
     async function fetchOnce() {
       try {
-        const body = await fetch(`/api/run/${encodeURIComponent(runId)}/graph`).then(r => r.json());
+        const body = await fetch(url).then(r => r.json());
         if (cancelled) return;
         if (body.error) setErr(body.error);
         else { setErr(null); setData(body.graph); }
@@ -124,7 +138,7 @@ function GraphView({ runId }) {
     fetchOnce();
     const t = setInterval(fetchOnce, 8000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [runId]);
+  }, [runId, simId]);
 
   const height = 320;
   const layout = useMemoG(() => {
@@ -149,19 +163,34 @@ function GraphView({ runId }) {
   if (!data.nodes || !data.nodes.length) {
     return (
       <div className="graph-pane">
-        <div className="graph-empty">graph has no entities yet</div>
+        <div className="graph-empty">no agent interactions yet</div>
       </div>
     );
   }
 
-  const types = [...new Set(layout.nodes.map(n => n.type))].sort();
+  // Legend: prefer stance values present, fall back to platform/type
+  const legendKeys = (() => {
+    const stances = [...new Set(layout.nodes.map(n => n.stance).filter(Boolean))];
+    if (stances.length) return stances.map(s => ({ label: s, color: STANCE_COLOR[s.toLowerCase()] || colorForNode({stance: s}) }));
+    const types = [...new Set(layout.nodes.map(n => n.type))].sort();
+    return types.slice(0, 6).map(t => ({ label: t, color: colorForNode({type: t}) }));
+  })();
+
+  // Node radius scales with total_degree (popularity in the network).
+  // Edge thickness scales with weight. Caps are tuned for readability.
+  const maxDegree = Math.max(1, ...layout.nodes.map(n => n.total_degree || 0));
+  const maxWeight = Math.max(1, ...layout.links.map(l => l.weight || 1));
+  const radiusFor = (n, hov) => {
+    const base = 3.5 + 4 * Math.sqrt((n.total_degree || 0) / maxDegree);
+    return hov ? base + 1.5 : base;
+  };
 
   return (
     <div className="graph-pane" ref={wrapRef}>
       <div className="graph-head">
-        <span className="graph-eyebrow">Knowledge graph</span>
+        <span className="graph-eyebrow">Agent interaction network</span>
         <span className="graph-stats">
-          <strong>{layout.nodes.length}</strong> nodes · <strong>{layout.links.length}</strong> edges
+          <strong>{layout.nodes.length}</strong> agents · <strong>{layout.links.length}</strong> interactions
         </span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="graph-svg" preserveAspectRatio="xMidYMid meet">
@@ -169,12 +198,13 @@ function GraphView({ runId }) {
           {layout.links.map((l, i) => {
             const a = layout.nodes[l.s], b = layout.nodes[l.t];
             const isHov = hoveredEdge === i || hovered === l.s || hovered === l.t;
+            const w = 0.6 + 1.8 * ((l.weight || 1) / maxWeight);
             return (
               <line key={i}
                 x1={a.x} y1={a.y} x2={b.x} y2={b.y}
                 stroke={isHov ? "var(--accent)" : "var(--rule)"}
-                strokeWidth={isHov ? 1.6 : 0.8}
-                opacity={isHov ? 0.95 : 0.5}
+                strokeWidth={isHov ? w + 0.8 : w}
+                opacity={isHov ? 0.95 : 0.55}
                 onMouseEnter={() => setHoveredEdge(i)}
                 onMouseLeave={() => setHoveredEdge(null)}
                 style={{ cursor: "pointer", transition: "opacity 150ms" }}
@@ -182,7 +212,7 @@ function GraphView({ runId }) {
             );
           })}
           {layout.nodes.map((n, i) => {
-            const c = colorForType(n.type);
+            const c = colorForNode(n);
             const isHov = hovered === i;
             return (
               <g key={n.id}
@@ -190,11 +220,11 @@ function GraphView({ runId }) {
                 onMouseLeave={() => setHovered(null)}
                 style={{ cursor: "pointer" }}
               >
-                <circle cx={n.x} cy={n.y} r={isHov ? 5.5 : 4}
+                <circle cx={n.x} cy={n.y} r={radiusFor(n, isHov)}
                   fill={c}
                   style={{ transition: "r 150ms" }} />
                 {isHov && (
-                  <text x={n.x} y={n.y - 9} textAnchor="middle"
+                  <text x={n.x} y={n.y - radiusFor(n, isHov) - 4} textAnchor="middle"
                     style={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "var(--fg)" }}>
                     {n.name}
                   </text>
@@ -207,12 +237,21 @@ function GraphView({ runId }) {
       {hovered != null && layout.nodes[hovered] && (
         <div className="graph-tooltip">
           <strong>{layout.nodes[hovered].name}</strong>
-          <span className="graph-type-badge" style={{ background: colorForType(layout.nodes[hovered].type) }}>
-            {layout.nodes[hovered].type}
-          </span>
-          {layout.nodes[hovered].summary && (
-            <div className="graph-summary">{layout.nodes[hovered].summary}</div>
-          )}
+          <div style={{display:"flex", gap:6, alignItems:"center", flexWrap:"wrap"}}>
+            <span className="graph-type-badge" style={{ background: colorForNode(layout.nodes[hovered]) }}>
+              {layout.nodes[hovered].stance || layout.nodes[hovered].type}
+            </span>
+            {layout.nodes[hovered].rank && (
+              <span style={{fontFamily:"var(--font-mono)", fontSize:10, color:"var(--fg-3)"}}>
+                rank #{layout.nodes[hovered].rank}
+              </span>
+            )}
+          </div>
+          <div className="graph-summary">
+            in {layout.nodes[hovered].in_degree || 0} ·
+            out {layout.nodes[hovered].out_degree || 0} ·
+            influence {layout.nodes[hovered].influence_score || 0}
+          </div>
         </div>
       )}
       {hoveredEdge != null && layout.links[hoveredEdge] && (
@@ -223,16 +262,17 @@ function GraphView({ runId }) {
             {" → "}
             {layout.nodes[layout.links[hoveredEdge].t].name}
           </span>
-          {layout.links[hoveredEdge].fact && (
-            <div className="graph-summary">{layout.links[hoveredEdge].fact}</div>
-          )}
+          <div className="graph-summary">
+            weight {layout.links[hoveredEdge].weight}
+            {layout.links[hoveredEdge].is_cross_platform ? " · cross-platform" : ""}
+          </div>
         </div>
       )}
       <div className="graph-legend">
-        {types.slice(0, 6).map(t => (
-          <span key={t} className="graph-legend-item">
-            <span className="dot" style={{ background: colorForType(t) }}></span>
-            {t}
+        {legendKeys.map(k => (
+          <span key={k.label} className="graph-legend-item">
+            <span className="dot" style={{ background: k.color }}></span>
+            {k.label}
           </span>
         ))}
       </div>

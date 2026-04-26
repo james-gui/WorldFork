@@ -398,7 +398,7 @@ function BranchDetail({ branch, scenario }) {
 
       {window.GraphView && scenario?.id && (
         <div className="detail-section">
-          <window.GraphView runId={scenario.id} />
+          <window.GraphView runId={scenario.id} simId={branch.child_sim_id} />
         </div>
       )}
     </div>
