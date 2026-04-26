@@ -19,7 +19,7 @@ function rampColor(v, min, max) {
 
 /* ---- layout ----------------------------------------------------------
  * Build a node tree:
- *   root → primary[i] → (only branch[0]) nested[j]
+ *   root → primary[i] → nested[j] for any j whose parent === primary[i].label
  * Then assign X via tidy-tree (each node's x = centroid of its children;
  * leaves get unique slots), and Y by depth.
  */
@@ -56,17 +56,20 @@ function buildTree(scenario, branches, nested, options) {
       branch: b, value: v, fork_round: scenario.fork_round,
       children: [],
     };
-    // Attach nested grandchildren under branch[0] only
-    if (i === 0 && includeNested && nested && nested.length > 0) {
-      // Promote branch[0] to a fork node + add a continuation leaf for itself
+    // Attach nested grandchildren under whichever primary they actually
+    // forked from. api.js tags each nested with `parent` = the primary's
+    // label, so we filter rather than hardcoding branch[0] (the v0.5 shape).
+    const myNested = (includeNested && nested)
+      ? nested.filter(nb => nb.parent === b.label)
+      : [];
+    if (myNested.length > 0) {
       node.type = "fork";
-      // branch[0]'s own continuation
       node.children.push({
         id: `b_${b.label}__cont`, type: "leaf", label: b.label, branch: b, value: v,
-        fork_round: nested[0].fork_round, isContinuation: true,
+        fork_round: myNested[0].fork_round, isContinuation: true,
         children: [],
       });
-      nested.forEach((nb) => {
+      myNested.forEach((nb) => {
         const nv = nb.outcomes ? nb.outcomes[scenario.primary] : null;
         node.children.push({
           id: `n_${nb.label}`, type: "leaf", label: nb.label,
