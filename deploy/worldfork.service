@@ -1,0 +1,29 @@
+# systemd unit for WorldFork on a Linux host (DGX / Ubuntu / DGX OS).
+#
+# Install:
+#   sudo cp deploy/worldfork.service /etc/systemd/system/
+#   # then edit User= and ExecStart= paths to match your install
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now worldfork
+#
+# Logs:
+#   journalctl -u worldfork -f         # systemd-level
+#   tail -f deploy/logs/*.log          # per-process
+
+[Unit]
+Description=WorldFork (MiroShark backend + WF server)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=REPLACE_WITH_YOUR_USERNAME
+WorkingDirectory=/home/REPLACE_WITH_YOUR_USERNAME/worldfork/WorldFork
+ExecStart=/home/REPLACE_WITH_YOUR_USERNAME/worldfork/WorldFork/deploy/launch.sh
+ExecStop=/home/REPLACE_WITH_YOUR_USERNAME/worldfork/WorldFork/deploy/stop.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

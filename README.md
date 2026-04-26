@@ -108,6 +108,12 @@ uv run python worldfork/orchestrator.py samples/godagent_v07_scenario.yaml \
 
 The UI is React via in-browser Babel — no Node build step. Edit `worldfork/ui/static/*.jsx` and hard-refresh. JSX file `?v=N` query params in `templates/WorldFork.html` are cache-busters; bump them when you change a JSX file.
 
+## Public deployment
+
+Putting this on a custom domain (DGX Spark or any Ubuntu host, exposed via Cloudflare Tunnel — no port-forwarding, no exposed home IP):
+
+→ See [`deploy/DEPLOY.md`](deploy/DEPLOY.md) for the end-to-end walkthrough plus the `launch.sh`, `worldfork.service`, and `cloudflared-config.example.yml` you'll need.
+
 ## Scenarios
 
 | File | Shape | Notes |

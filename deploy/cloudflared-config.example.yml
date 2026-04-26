@@ -1,0 +1,45 @@
+# Cloudflare Tunnel config for WorldFork.
+#
+# Setup (one-time on the DGX):
+#
+#   # 1. install cloudflared
+#   sudo dpkg -i cloudflared-linux-arm64.deb     # DGX Spark is arm64
+#   # (or amd64 on x86 hosts)
+#
+#   # 2. authenticate against your Cloudflare account
+#   cloudflared tunnel login
+#
+#   # 3. create the tunnel
+#   cloudflared tunnel create worldfork
+#   # → prints "Tunnel credentials written to /home/<you>/.cloudflared/<UUID>.json"
+#
+#   # 4. point your domain at it (CNAME via Cloudflare DNS)
+#   cloudflared tunnel route dns worldfork worldfork.<your-domain>
+#
+#   # 5. drop this config at ~/.cloudflared/config.yml — replace UUID + paths
+#
+#   # 6. enable as a system service
+#   sudo cloudflared service install
+#   sudo systemctl enable --now cloudflared
+#
+# Verify: open https://worldfork.<your-domain> from anywhere.
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /home/REPLACE_WITH_YOUR_USERNAME/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+# Optional: cloudflared logs stay manageable on a long-running host.
+loglevel: info
+
+ingress:
+  # WorldFork UI + API on your custom subdomain.
+  - hostname: worldfork.REPLACE_WITH_YOUR_DOMAIN
+    service: http://localhost:5055
+
+  # If you also want the MiroShark backend exposed (e.g. for a sibling
+  # project that talks to it), uncomment and pick another subdomain.
+  # By default WorldFork is the only thing the public should hit.
+  # - hostname: miroshark.REPLACE_WITH_YOUR_DOMAIN
+  #   service: http://localhost:5001
+
+  # Catch-all 404 — required as the last rule.
+  - service: http_status:404

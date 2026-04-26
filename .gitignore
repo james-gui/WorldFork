@@ -49,3 +49,5 @@ runs/
 log/
 *.log
 events.jsonl
+deploy/logs/
+deploy/*.pid
