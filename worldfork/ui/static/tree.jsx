@@ -182,10 +182,27 @@ function TreeView({ scenario, branches, nested, progress, selected, onSelect, in
         {/* Nodes */}
         {nodes.map(n => {
           if (n.type === "root") {
+            // Click behavior:
+            //  - if a no-perturbation continuation leaf exists (post-classify),
+            //    redirect there so the user sees the baseline branch's outcomes;
+            //  - otherwise (pre-fork or pre-classify) select root itself, which
+            //    pages.jsx resolves via scenario.rootLive to the parent's live
+            //    round + status info.
+            const onRootClick = () => {
+              const np = nodes.find(x => x.id === "b_no_perturbation");
+              onSelect(np || n);
+            };
+            const isSelected = selected === n.id;
             return (
-              <g key={n.id}>
-                <circle className="node-circle root" cx={n._x} cy={n._y} r={6} />
-                <text className="node-label" x={n._x} y={n._y - 14} textAnchor="middle">
+              <g key={n.id}
+                onClick={onRootClick}
+                style={{ cursor: "pointer" }}
+              >
+                <circle className={`node-circle root ${isSelected ? "selected" : ""}`}
+                  cx={n._x} cy={n._y} r={isSelected ? 7.5 : 6}
+                  style={{ transition: "all 200ms ease" }} />
+                <text className="node-label" x={n._x} y={n._y - 14} textAnchor="middle"
+                  style={{ fontWeight: isSelected ? 600 : 400 }}>
                   parent · {scenario.parent_sim_id}
                 </text>
               </g>

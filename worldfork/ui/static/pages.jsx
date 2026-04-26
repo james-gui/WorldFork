@@ -167,6 +167,27 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
     // The continuation leaf for a fork-promoted primary uses id "b_<label>__cont"
     // (see tree.jsx). Map it back to the underlying branch.
     const key = selected.replace(/__cont$/, "");
+    if (key === "root") {
+      // Pre-fork / pre-classify root click: synthesize a branch-shaped object
+      // from rootLive so BranchDetail can render parent's round + status.
+      if (scenario.rootBranch) return scenario.rootBranch;
+      const live = scenario.rootLive;
+      if (!live) return null;
+      return {
+        label: "parent (root)",
+        child_sim_id: live.sim_id,
+        valid: true,
+        perturbation: "(no perturbation — parent running normally)",
+        mood: "—",
+        reasoning: "",
+        outcomes: null,
+        fork_round: scenario.fork_round,
+        current_round: live.current_round,
+        total_rounds: live.total_rounds,
+        runner_status: live.runner_status,
+        isRoot: true,
+      };
+    }
     if (key === "b_no_perturbation" && scenario.rootBranch) return scenario.rootBranch;
     if (key.startsWith("b_")) return BRANCHES.find(b => `b_${b.label}` === key);
     if (key.startsWith("n_")) return NESTED.find(b => `n_${b.label}` === key);
@@ -307,9 +328,16 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
 
 function BranchDetail({ branch, scenario }) {
   const o = branch.outcomes || {};
+  const eyebrow = branch.isRoot
+    ? "Parent · root"
+    : branch.isRootContinuation
+    ? "Baseline · no perturbation"
+    : branch.fork_round
+    ? `nested r${branch.fork_round}`
+    : `r${scenario.fork_round} fork`;
   return (
     <div>
-      <div className="eyebrow">Branch · {branch.fork_round ? `nested r${branch.fork_round}` : `r${scenario.fork_round} fork`}</div>
+      <div className="eyebrow">Branch · {eyebrow}</div>
       <h4>{branch.label}</h4>
       <div className="sub-id">{branch.child_sim_id}</div>
 

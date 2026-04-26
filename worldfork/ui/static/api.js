@@ -87,7 +87,17 @@
     // The root (parent) is its own no-perturbation control. When it ran to
     // horizon and was classified, its outcomes are merged onto the tree node.
     // Surface that as a synthetic branch the tree builder can render as a
-    // continuation leaf alongside the perturbed siblings.
+    // continuation leaf alongside the perturbed siblings. Also surface the
+    // parent's live state (round counter, runner status) regardless of
+    // classifier completion — pre-fork and pre-classify the user can still
+    // click the root to inspect parent progress.
+    const rootLive = tree.sim_id ? {
+      sim_id: tree.sim_id,
+      current_round: safe(tree.current_round, 0),
+      total_rounds: safe(tree.total_rounds, 0),
+      runner_status: tree.runner_status,
+      status: tree.status,
+    } : null;
     const rootOutcomes = tree.outcomes || null;
     const rootBranch = rootOutcomes
       ? {
@@ -129,6 +139,7 @@
       branches,
       nested,
       rootBranch,
+      rootLive,
       outcome_schema,
 
       // live state — used by sim-page polling
