@@ -1,0 +1,128 @@
+# WorldFork v0.5 scenario — FTX collapse cascade
+# A faster, more contagious crisis than USDC depeg: counterparty risk + bank
+# run dynamics + meme-driven price action + multi-asset spillover (FTT → SOL
+# → BTC). Rich substrate for forecasting which futures end in a 20%+ BTC drop.
+
+name: ftx_collapse_v05
+description: >
+  Leaked Alameda balance sheet + Binance dumping FTT. Does FTX honor
+  withdrawals or does the cascade go full Lehman, dragging BTC down 20%+ as
+  forced selling and contagion fear spread across the market?
+
+seed_document: ftx_collapse_seed.txt
+
+simulation:
+  horizon_rounds: 20
+  agents: 16
+  platform: reddit            # cheap recsys + thread structure works for crisis dynamics
+
+# How branches are created and run.
+branching:
+  state_fork: true            # every fork goes through the live /fork-now primitive
+  fork_round: 4               # pre-fork shared history captures the initial "is this real?" hour
+  num_branches: 8
+  perturbation_strategy: god_llm
+  god_llm_model: google/gemini-3.1-flash-lite-preview
+  god_llm_prompt: |
+    You are simulating plausible exogenous events around the FTX collapse.
+    Given the seed scenario above, generate {N} plausible events that could
+    realistically occur ~2 hours after the initial leaked-balance-sheet
+    moment. Each event should:
+      - Be realistic (sourceable to a plausible actor — CZ, SBF, Caroline,
+        Tether, Coinbase, regulators, on-chain whales)
+      - Be distinct (push the cascade in different directions)
+      - Be specific (named actor, concrete action, specific amount or price)
+    Span a range from FTX-saving (CZ acquisition signal, white-knight cash
+    injection, withdrawal queue clears) to FTX-killing (FTX halts
+    withdrawals, SOL crashes 50%, contagion to a major lender).
+    Output as a JSON array of {round, headline, body} objects.
+
+  # Optional second on-demand fork on one of the primary children — same
+  # /fork-now primitive. Future God-Agent will trigger this dynamically.
+  nested_fork:
+    enabled: true
+    target_branch_index: 0
+    fork_round: 8
+    num_branches: 3
+
+# Outcome variables — pre-declared, classifier-readable. The float ones drive
+# the live histogram + leaf heatmap on the run page.
+outcomes:
+  # === Headline forecast — the question the user actually wants answered ===
+  - name: btc_20pct_drop_probability
+    description: >
+      Based on the agents' discussions, posts, sentiment, concrete price
+      predictions, on-chain reports, and any whale moves discussed in this
+      branch, estimate the probability that BTC drops 20%+ from its current
+      price ($20,500) within the next 24 hours of simulated time. Calibrate
+      based on: consensus among agents (what fraction expect a drop vs hold);
+      intensity of panic vs calm rhetoric; concrete BTC price targets
+      mentioned ("BTC to $14k", "BTC sub-$17k by morning"); reports of
+      institutional/whale selling; correlation arguments (e.g. "if SOL goes,
+      BTC goes"). 0.0 = the branch consensus is that BTC holds; 1.0 = the
+      branch consensus is that BTC will definitely break $16,400.
+    type: float
+    range: [0, 1]
+
+  # === Other numeric forecasts — also get histograms in the side panel ===
+  - name: ftx_withdrawal_halt_probability
+    description: >
+      Probability that FTX halts withdrawals within the next 24 simulated
+      hours, inferred from agent discussions of withdrawal queue length, SBF
+      statements, on-chain outflow signals, and prior-collapse comparisons.
+    type: float
+    range: [0, 1]
+
+  - name: contagion_breadth_score
+    description: >
+      How wide is the contagion narrative? 0 = isolated to FTX/FTT/SOL only;
+      5 = mid-cap exchanges and lenders also dragged in; 10 = systemic crypto
+      crisis discussion (BTC/ETH lows, stablecoin contagion, regulatory
+      intervention talk). Score this branch's typical post.
+    type: float
+    range: [0, 10]
+
+  - name: panic_score
+    description: >
+      Average sentiment of branch posts about the cascade.
+      0 = total panic / "get out now" rhetoric; 5 = mixed / debated;
+      10 = calm / dismissive of contagion risk.
+    type: float
+    range: [0, 10]
+
+  # === Categorical bool outcomes (not in histograms; show on cluster summary) ===
+  - name: cz_acquisition_mentioned
+    description: "Did 3+ posts discuss the possibility of Binance acquiring FTX?"
+    type: bool
+
+  - name: sol_dump_observed
+    description: "Did agents report SOL dropping 30%+ from its $32 starting price?"
+    type: bool
+
+  - name: stablecoin_contagion_concern
+    description: >
+      Did agents express concern about USDT/USDC contagion from the FTX
+      collapse (e.g. "Tether next?")?
+    type: bool
+
+  - name: regulator_action_anticipated
+    description: >
+      Did 2+ agents mention SEC/CFTC/DOJ likely involvement or specific
+      regulator names as imminently relevant?
+    type: bool
+
+# Branches that don't meet these criteria are excluded from aggregation.
+validity_checks:
+  min_active_agents: 10
+  min_posts_about_topic: 8
+  completed_all_rounds: true
+
+# How to roll up per-branch rows.
+aggregation:
+  primary_split: btc_20pct_drop_probability   # float — clusters by 0-0.33, 0.33-0.66, 0.66-1
+  cluster_summarize: true
+  report_confidence_intervals: true
+
+# Hard cap on spend.
+budget:
+  max_usd: 15.00

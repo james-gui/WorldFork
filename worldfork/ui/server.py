@@ -47,8 +47,8 @@ from worldfork.live_state import assemble_live_state  # noqa: E402
 # ---------------------------------------------------------------------------
 
 # Locked demo inputs — the only scenario the demo can run.
-DEMO_SCENARIO = PROJECT_ROOT / "samples" / "usdc_depeg_scenario.yaml"
-DEMO_PARENT_SIM_ID = "sim_0038baece0f7"   # bootstrapped during the proof point
+DEMO_SCENARIO = PROJECT_ROOT / "samples" / "ftx_collapse_scenario.yaml"
+DEMO_PARENT_SIM_ID = "sim_fb255a855dd5"   # bootstrapped 2026-04-26 from ftx_collapse_seed.txt
 DEMO_NUM_BRANCHES = 8
 
 RUNS_DIR = PROJECT_ROOT / "runs"
@@ -188,18 +188,21 @@ START_PAGE = """<!doctype html>
     <div class="demo-card">
       <h2>Demo scenario (locked)</h2>
       <div class="scenario-summary">
-        <strong>USDC depeg cascade.</strong> Reuters reports Circle has lost
-        a primary banking partner. USDC trades at $0.998, $180M in pending
-        burns. Does the cascade break the $0.99 floor — or hold? Run 8
-        branches to find out the probability distribution.
+        <strong>FTX collapse cascade.</strong> CoinDesk leaks Alameda's
+        FTT-heavy balance sheet; CZ announces Binance is dumping its FTT
+        position. BTC at $20,500. Does the cascade go full Lehman, dragging
+        BTC 20%+ lower as forced selling and contagion fear spread? Run 8
+        branches + a nested fork on branch[0] at round 8 — get a probability
+        distribution over alternate futures.
       </div>
       <div class="config-grid">
-        <div class="key">scenario:</div><div class="val">usdc_depeg_v0</div>
+        <div class="key">scenario:</div><div class="val">ftx_collapse_v05</div>
         <div class="key">parent_sim_id:</div><div class="val">__PARENT_ID__</div>
         <div class="key">num_branches:</div><div class="val">__NUM_BRANCHES__</div>
+        <div class="key">nested_fork:</div><div class="val">branch[0] @ round 8 → 3 grandchildren</div>
         <div class="key">platform:</div><div class="val">reddit</div>
         <div class="key">horizon_rounds:</div><div class="val">20</div>
-        <div class="key">fork_round:</div><div class="val">1</div>
+        <div class="key">fork_round:</div><div class="val">4</div>
       </div>
       <div class="lock-note">
         🔒 Inputs locked for the demo. In the production tool you'd be able to
