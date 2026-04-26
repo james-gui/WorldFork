@@ -522,13 +522,18 @@ async def run_ensemble(
                 }
                 for br in run.branches
             ]
+            # parent_action="continue" so the parent runs r{fork_round}→horizon
+            # alongside the perturbed children. The parent's trajectory is the
+            # null-hypothesis baseline ("no perturbation"), which the v2 tree
+            # surfaces as a `root (cont.)` continuation leaf and the classifier
+            # treats as one of the branches in the ensemble.
             print(f"[orchestrator] [primary fork] → /fork-now "
-                  f"(N={len(primary_perts)}, parent_action=stop)…", flush=True)
+                  f"(N={len(primary_perts)}, parent_action=continue)…", flush=True)
             primary = await client.fork_now(
                 parent_sim_id=parent_sim_id,
                 perturbations=primary_perts,
                 max_rounds=horizon_rounds,
-                parent_action="stop",
+                parent_action="continue",
             )
             run.fork_round = int(primary["snapshot_round"])
             for br, child in zip(run.branches, primary["children"]):
@@ -543,6 +548,23 @@ async def run_ensemble(
                 # Mood was applied server-side; surface count = "applied" for the manifest.
                 if br.mood_modifier:
                     br.mood_applied_counts = {"applied_via_fork_now": True}
+
+            # Append a synthetic "no perturbation" branch for the parent itself.
+            # parent_action="continue" left the parent running r{fork_round}→horizon
+            # alongside the perturbed children — its trajectory is the
+            # null-hypothesis baseline. We add it AFTER the perturbed children so
+            # nested-fork target indices (which refer to the perturbed list) stay
+            # valid, then the polling + classifier loops naturally treat it as
+            # one of the branches. child_sim_id = parent_sim_id, so the lineage
+            # merge in the v1 server decorates the tree's root node with the
+            # parent's outcomes.
+            run.branches.append(BranchResult(
+                label="no_perturbation",
+                perturbation_text="(no perturbation — parent timeline)",
+                parent_sim_id=parent_sim_id,
+                mood_modifier=None,
+                child_sim_id=parent_sim_id,
+            ))
 
             # 3) Optional nested fork — second on-demand fork against one of the
             #    primary children once it reaches `nested_fork.fork_round`. This

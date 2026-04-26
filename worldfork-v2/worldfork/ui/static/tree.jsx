@@ -26,13 +26,28 @@ function rampColor(v, min, max) {
 function buildTree(scenario, branches, nested, options) {
   const { progress = 1.0, includeNested = true } = options || {};
   const revealCount = Math.min(branches.length, Math.ceil(progress * branches.length));
+  const rootBranch = scenario.rootBranch;
+  const rootValue = rootBranch?.outcomes ? rootBranch.outcomes[scenario.primary] : null;
 
-  // Build the tree structure (as a JS object graph)
+  // Build the tree structure (as a JS object graph). When the parent itself
+  // ran to horizon (parent_action="continue") and was classified, add a
+  // `no perturbation` continuation leaf alongside the perturbed siblings — the
+  // null-hypothesis baseline. Visually identical to a normal leaf except for
+  // its label, so the eye reads it as a 9th branch ("no change reality").
   const root = {
     id: "root", type: "root", label: "parent",
     fork_round: 0, kind: "trunk",
     children: [],
   };
+
+  if (rootBranch) {
+    root.children.push({
+      id: "b_no_perturbation", type: "leaf", label: "no perturbation",
+      branch: rootBranch, value: rootValue, fork_round: scenario.fork_round,
+      isRootContinuation: true,
+      children: [],
+    });
+  }
 
   branches.slice(0, revealCount).forEach((b, i) => {
     const v = b.outcomes ? b.outcomes[scenario.primary] : null;
@@ -88,6 +103,14 @@ function buildTree(scenario, branches, nested, options) {
     }
   }
   place(root, 0);
+
+  // When the tree is just a root (no children rendered yet), the placement
+  // above puts it at LEFT_PAD because cursor-based logic treats it as the
+  // first leaf. Recenter so the node sits in the middle of the SVG instead
+  // of pinned to the left.
+  if (root.children.length === 0) {
+    root._x = 800 / 2;
+  }
 
   // Collect flat node + link arrays
   const allNodes = [];
@@ -169,14 +192,21 @@ function TreeView({ scenario, branches, nested, progress, selected, onSelect, in
             );
           }
           if (n.type === "fork") {
-            // A leaf-bearing branch that itself becomes a junction for nested
+            // A leaf-bearing branch that itself becomes a junction for nested.
+            // Clickable — selects the underlying branch (same id pattern as a
+            // leaf), so the detail pane opens just like clicking a regular branch.
             const color = rampColor(n.value, vMin, vMax);
+            const isSelected = selected === n.id;
             return (
-              <g key={n.id}>
-                <circle className="node-circle fork"
-                  cx={n._x} cy={n._y} r={5.5}
-                  style={{ stroke: color }} />
-                <text className="node-label" x={n._x} y={n._y - 14} textAnchor="middle">
+              <g key={n.id}
+                onClick={() => onSelect(n)}
+                style={{ cursor: "pointer" }}
+              >
+                <circle className={`node-circle fork ${isSelected ? "selected" : ""}`}
+                  cx={n._x} cy={n._y} r={isSelected ? 7 : 5.5}
+                  style={{ stroke: color, transition: "all 200ms ease" }} />
+                <text className="node-label" x={n._x} y={n._y - 14} textAnchor="middle"
+                  style={{ fontWeight: isSelected ? 600 : 400 }}>
                   fork @ r{n.fork_round}
                 </text>
               </g>

@@ -13,60 +13,18 @@ function AnalysisPage({ scenario, loading, err, onBack, onSim }) {
 
   React.useEffect(() => { setSortBy("primary"); setSortDir("desc"); }, [scenario?.id]);
 
-  if (err) {
-    return (
-      <div className="analysis">
-        <div className="empty-detail" style={{padding: 60}}>
-          <div className="ic">!</div>
-          <div style={{color: "var(--bad)"}}>Failed to load: {err}</div>
-        </div>
-      </div>
-    );
-  }
-  if (loading || !scenario) {
-    return (
-      <div className="analysis">
-        <div className="empty-detail" style={{padding: 60}}>
-          <div className="ic">…</div>
-          <div>Loading run…</div>
-        </div>
-      </div>
-    );
-  }
-  if (!scenario.manifest_present) {
-    return (
-      <div className="analysis">
-        <div className="analysis-head">
-          <div>
-            <div className="eyebrow">Run analysis · {scenario.name}</div>
-            <h2>Awaiting <em>classifier</em></h2>
-            <p>The ensemble is still running ({scenario.phase}). Outcomes are
-              computed once the classifier sweeps each branch — this page
-              auto-fills the moment that happens.</p>
-          </div>
-          <div className="analysis-head-meta">
-            <div>parent · {scenario.parent_sim_id}</div>
-            <div>fork @ r{scenario.fork_round} · horizon r{scenario.horizon_rounds}</div>
-            <div>{scenario.branches.length} branches so far</div>
-          </div>
-        </div>
-        <div style={{display:"flex", justifyContent:"space-between", paddingTop: 32, borderTop: "1px solid var(--rule)"}}>
-          <button className="btn ghost" onClick={onSim}>← Back to tree</button>
-          <button className="btn ghost" onClick={onBack}>Home</button>
-        </div>
-      </div>
-    );
-  }
-
+  // Derive everything used by the useMemos with null-safe defaults *before*
+  // any early return. Hooks must run in the same order on every render.
   const SCENARIO = scenario;
-  const BRANCHES = scenario.branches;
-  const NESTED = scenario.nested;
-  const OUTCOME_SCHEMA = scenario.outcome_schema || [];
+  const BRANCHES = scenario?.branches || [];
+  const NESTED = scenario?.nested || [];
+  const OUTCOME_SCHEMA = scenario?.outcome_schema || [];
 
   const allBranches = [...BRANCHES, ...NESTED.map(n => ({ ...n, nested: true }))];
+  if (scenario?.rootBranch) allBranches.push({ ...scenario.rootBranch, isRootContinuation: true });
   const validBranches = allBranches.filter(b => b.valid);
 
-  const primary = SCENARIO.primary;
+  const primary = scenario?.primary;
   const primarySchema = OUTCOME_SCHEMA.find(o => o.name === primary);
   const primaryRange = primarySchema?.range || [0, 1];
   const isPctOutcome = primaryRange[1] === 1 && primaryRange[0] === 0;
@@ -74,7 +32,7 @@ function AnalysisPage({ scenario, loading, err, onBack, onSim }) {
   // Headline aggregate from server-provided distribution if available;
   // otherwise compute on the fly from valid branches.
   const headline = useMemoA(() => {
-    const serverDist = primary ? (SCENARIO.distributions || {})[primary] : null;
+    const serverDist = primary && SCENARIO ? (SCENARIO.distributions || {})[primary] : null;
     if (serverDist) {
       const vals = serverDist.values || [];
       const variance = vals.length > 1
@@ -196,8 +154,56 @@ function AnalysisPage({ scenario, loading, err, onBack, onSim }) {
     if (headline.n === 0) return "No numeric outcomes yet — waiting on classifier.";
     const polarity = headline.median > 0.66 ? "high" : headline.median > 0.33 ? "moderate" : "low";
     const widthDesc = (headline.max - headline.min) > 0.5 ? "with sharp disagreement" : "with broad agreement";
+    if (!SCENARIO) return "";
     return `Across ${headline.n} valid branch${headline.n === 1 ? "" : "es"}, the ensemble assigns a ${polarity} ${SCENARIO.primary_label} ${widthDesc} (${(headline.min*100).toFixed(0)}–${(headline.max*100).toFixed(0)}%).`;
   }, [scenario]);
+
+  // Early returns must come AFTER all hooks so render-to-render hook count
+  // stays constant. Otherwise React unmounts the tree → white screen.
+  if (err) {
+    return (
+      <div className="analysis">
+        <div className="empty-detail" style={{padding: 60}}>
+          <div className="ic">!</div>
+          <div style={{color: "var(--bad)"}}>Failed to load: {err}</div>
+        </div>
+      </div>
+    );
+  }
+  if (loading || !scenario) {
+    return (
+      <div className="analysis">
+        <div className="empty-detail" style={{padding: 60}}>
+          <div className="ic">…</div>
+          <div>Loading run…</div>
+        </div>
+      </div>
+    );
+  }
+  if (!scenario.manifest_present) {
+    return (
+      <div className="analysis">
+        <div className="analysis-head">
+          <div>
+            <div className="eyebrow">Run analysis · {scenario.name}</div>
+            <h2>Awaiting <em>classifier</em></h2>
+            <p>The ensemble is still running ({scenario.phase}). Outcomes are
+              computed once the classifier sweeps each branch — this page
+              auto-fills the moment that happens.</p>
+          </div>
+          <div className="analysis-head-meta">
+            <div>parent · {scenario.parent_sim_id}</div>
+            <div>fork @ r{scenario.fork_round} · horizon r{scenario.horizon_rounds}</div>
+            <div>{scenario.branches.length} branches so far</div>
+          </div>
+        </div>
+        <div style={{display:"flex", justifyContent:"space-between", paddingTop: 32, borderTop: "1px solid var(--rule)"}}>
+          <button className="btn ghost" onClick={onSim}>← Back to tree</button>
+          <button className="btn ghost" onClick={onBack}>Home</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="analysis">

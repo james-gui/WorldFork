@@ -143,6 +143,36 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
   // Reset selection when switching to a different run
   useEffect(() => { setSelected(null); }, [scenario?.id]);
 
+  // All hooks must run on every render — derive scenario-dependent values
+  // up here, with null-safe fallbacks, before any early return. Otherwise
+  // React sees a different hook count between loading and loaded renders
+  // and unmounts the tree (white screen).
+  const BRANCHES = scenario?.branches || [];
+  const NESTED = scenario?.nested || [];
+  const primaryName = scenario?.primary;
+  const summary = useMemo(() => {
+    if (!scenario) return null;
+    const all = [...BRANCHES, ...NESTED];
+    if (scenario.rootBranch) all.push(scenario.rootBranch);
+    const validForPrimary = all.filter(
+      b => b.valid && b.outcomes && b.outcomes[primaryName] != null);
+    if (!validForPrimary.length) return null;
+    const vals = validForPrimary.map(b => b.outcomes[primaryName]);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return { mean, n: vals.length };
+  }, [scenario]);
+
+  const selectedBranch = useMemo(() => {
+    if (!selected || !scenario) return null;
+    // The continuation leaf for a fork-promoted primary uses id "b_<label>__cont"
+    // (see tree.jsx). Map it back to the underlying branch.
+    const key = selected.replace(/__cont$/, "");
+    if (key === "b_no_perturbation" && scenario.rootBranch) return scenario.rootBranch;
+    if (key.startsWith("b_")) return BRANCHES.find(b => `b_${b.label}` === key);
+    if (key.startsWith("n_")) return NESTED.find(b => `n_${b.label}` === key);
+    return null;
+  }, [selected, scenario]);
+
   if (err) {
     return (
       <div className="sim-page" style={{padding: 32}}>
@@ -164,27 +194,8 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
     );
   }
 
-  const BRANCHES = scenario.branches;
-  const NESTED = scenario.nested;
   const SCENARIO = scenario;
   const done = scenario.phase === "complete";
-
-  // Headline live summary
-  const primaryName = SCENARIO.primary;
-  const validForPrimary = [...BRANCHES, ...NESTED].filter(b => b.valid && b.outcomes && b.outcomes[primaryName] != null);
-  const summary = useMemo(() => {
-    if (!validForPrimary.length) return null;
-    const vals = validForPrimary.map(b => b.outcomes[primaryName]);
-    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-    return { mean, n: vals.length };
-  }, [scenario]);
-
-  const selectedBranch = useMemo(() => {
-    if (!selected) return null;
-    if (selected.startsWith("b_")) return BRANCHES.find(b => `b_${b.label}` === selected);
-    if (selected.startsWith("n_")) return NESTED.find(b => `n_${b.label}` === selected);
-    return null;
-  }, [selected, scenario]);
 
   return (
     <div className="sim-page">
@@ -225,21 +236,24 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
             </div>
           </div>
 
-          {BRANCHES.length === 0 ? (
-            <div style={{padding: 80, color: "var(--fg-3)", fontFamily: "var(--font-mono)", fontSize: 13}}>
-              waiting for first child branches…<br/>
-              <span style={{fontSize: 11}}>parent {SCENARIO.parent_sim_id} · phase {SCENARIO.phase}</span>
+          <window.TreeView
+            scenario={SCENARIO}
+            branches={BRANCHES}
+            nested={NESTED}
+            progress={1}
+            selected={selected}
+            onSelect={(n) => setSelected(n.id)}
+            includeNested={includeNested}
+          />
+          {BRANCHES.length === 0 && (
+            <div style={{padding: "16px 24px", color: "var(--fg-3)", fontFamily: "var(--font-mono)", fontSize: 12, textAlign: "center"}}>
+              waiting for first child branches…
+              <span style={{fontSize: 10, display:"block", marginTop:4}}>
+                {SCENARIO.parent_sim_id !== "—"
+                  ? <>parent {SCENARIO.parent_sim_id} · phase {SCENARIO.phase}</>
+                  : <>phase {SCENARIO.phase} · parent sim not yet created</>}
+              </span>
             </div>
-          ) : (
-            <window.TreeView
-              scenario={SCENARIO}
-              branches={BRANCHES}
-              nested={NESTED}
-              progress={1}
-              selected={selected}
-              onSelect={(n) => setSelected(n.id)}
-              includeNested={includeNested}
-            />
           )}
 
           <div className="tree-legend">

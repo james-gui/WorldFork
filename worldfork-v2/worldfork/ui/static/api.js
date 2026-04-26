@@ -84,6 +84,28 @@
 
     const scenarioName = runListEntry?.scenario || lineage.scenario_name || runId;
 
+    // The root (parent) is its own no-perturbation control. When it ran to
+    // horizon and was classified, its outcomes are merged onto the tree node.
+    // Surface that as a synthetic branch the tree builder can render as a
+    // continuation leaf alongside the perturbed siblings.
+    const rootOutcomes = tree.outcomes || null;
+    const rootBranch = rootOutcomes
+      ? {
+          label: "no_perturbation",
+          child_sim_id: tree.sim_id,
+          valid: tree.valid !== false,
+          perturbation: "(no perturbation — parent timeline)",
+          mood: "—",
+          reasoning: tree.classifier_reasoning || tree.invalid_reason || "",
+          outcomes: rootOutcomes,
+          fork_round: 0,
+          current_round: safe(tree.current_round, 0),
+          total_rounds: safe(tree.total_rounds, 0),
+          runner_status: tree.runner_status,
+          isRootContinuation: true,
+        }
+      : null;
+
     return {
       id: runId,
       run_id: runId,
@@ -102,10 +124,11 @@
       primary_p: dist?.mean ?? 0,
       primary_ci: dist ? `n=${dist.n} · IQR [${dist.q25.toFixed(2)}, ${dist.q75.toFixed(2)}]` : "",
       ts: runListEntry?.timestamp || tree.created_at?.slice(0, 16).replace("T", " ") || "—",
-      n_valid: validBranches.length,
-      n_total: branches.length + nested.length,
+      n_valid: validBranches.length + (rootBranch && rootBranch.valid ? 1 : 0),
+      n_total: branches.length + nested.length + (rootBranch ? 1 : 0),
       branches,
       nested,
+      rootBranch,
       outcome_schema,
 
       // live state — used by sim-page polling

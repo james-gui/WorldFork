@@ -346,7 +346,6 @@ def api_start():
         str(ORCHESTRATOR_VENV_PYTHON),
         str(ORCHESTRATOR_SCRIPT),
         str(DEMO_SCENARIO),
-        DEMO_PARENT_SIM_ID,
         "--num-branches", str(DEMO_NUM_BRANCHES),
         "--branch-timeout", "1800",
         "--poll-interval", "15",
