@@ -476,11 +476,13 @@ def api_run_lineage(run_id: str):
     if not root_sim_id:
         return jsonify({"run_id": run_id, "phase": phase, "tree": None})
 
+    # Pass started_at AS-IS (Z and all). MiroShark uses the trailing Z to know
+    # the timestamp is UTC and converts it to naive local for comparison with
+    # state.json's naive-local created_at. Stripping Z here was a bug that
+    # made MiroShark treat UTC times as local → demos started "in the future"
+    # of all their children → tree always empty.
     started_at = rec.get("started_at") or ""
-    # MiroShark sim state.json uses ISO without Z; trim trailing Z if present for str compare
-    since = started_at.rstrip("Z")
-
-    qs = _urllib_parse.urlencode({"since": since}) if since else ""
+    qs = _urllib_parse.urlencode({"since": started_at}) if started_at else ""
     url = f"http://localhost:5001/api/simulation/{root_sim_id}/lineage" + (f"?{qs}" if qs else "")
     try:
         with _urllib_request.urlopen(url, timeout=5) as resp:
@@ -497,11 +499,98 @@ def api_run_lineage(run_id: str):
             "tree": None, "lineage_error": body.get("error"),
         })
 
+    tree = body["data"]
+
+    # Merge per-branch outcomes from the manifest (if it's been written) so
+    # the visualizer can color leaves + plot distributions.
+    manifest_path = rec.get("manifest_path")
+    if not manifest_path:
+        manifest_path = _extract_manifest_path(log_text)
+    manifest = None
+    if manifest_path and Path(manifest_path).exists():
+        try:
+            manifest = json.loads(Path(manifest_path).read_text())
+        except Exception:
+            manifest = None
+
+    outcome_schema = []
+    distributions = {}  # var_name -> { values, mean, median, q25, q75, n }
+    if manifest:
+        # Merge outcomes onto matching tree nodes by sim_id
+        sim_to_outcomes = {}
+        for b in manifest.get("branches") or []:
+            sid = b.get("child_sim_id")
+            if sid:
+                sim_to_outcomes[sid] = {
+                    "outcomes": b.get("outcomes") or {},
+                    "valid": b.get("valid"),
+                    "invalid_reason": b.get("invalid_reason"),
+                    "perturbation_text": b.get("perturbation_text"),
+                }
+        def _decorate(node):
+            extra = sim_to_outcomes.get(node.get("sim_id"))
+            if extra:
+                node["outcomes"] = extra["outcomes"]
+                node["valid"] = extra["valid"]
+                node["invalid_reason"] = extra["invalid_reason"]
+                node["perturbation_text"] = extra["perturbation_text"]
+            for c in node.get("children") or []:
+                _decorate(c)
+        _decorate(tree)
+
+        # Pull the outcome schema from the scenario YAML so the renderer
+        # knows which vars are float/bool and what range/description.
+        try:
+            with open(DEMO_SCENARIO) as f:
+                scen = yaml.safe_load(f)
+            outcome_schema = scen.get("outcomes") or []
+        except Exception:
+            pass
+
+        # Compute distributions for every numeric outcome (float/int) across
+        # leaves that have outcomes. Renderer picks one to plot as the headline
+        # histogram + uses the same scale to color leaves.
+        leaf_outcomes = list(sim_to_outcomes.values())
+        for var in outcome_schema:
+            name = var["name"]
+            t = (var.get("type") or "").lower()
+            if t not in ("float", "int", "number"):
+                continue
+            vals = []
+            for lo in leaf_outcomes:
+                v = (lo.get("outcomes") or {}).get(name)
+                if isinstance(v, (int, float)) and v is not None:
+                    vals.append(float(v))
+            if not vals:
+                continue
+            vals_sorted = sorted(vals)
+            n = len(vals_sorted)
+            mean = sum(vals_sorted) / n
+            median = vals_sorted[n // 2] if n % 2 else (vals_sorted[n // 2 - 1] + vals_sorted[n // 2]) / 2
+            def _pct(p):
+                k = max(0, min(n - 1, int(round(p * (n - 1)))))
+                return vals_sorted[k]
+            distributions[name] = {
+                "values": vals_sorted,
+                "mean": mean,
+                "median": median,
+                "q25": _pct(0.25),
+                "q75": _pct(0.75),
+                "min": vals_sorted[0],
+                "max": vals_sorted[-1],
+                "n": n,
+                "range": var.get("range"),
+                "description": (var.get("description") or "").strip(),
+            }
+
     return jsonify({
         "run_id": run_id,
         "phase": phase,
         "root_sim_id": root_sim_id,
-        "tree": body["data"],
+        "tree": tree,
+        "manifest_present": manifest is not None,
+        "outcome_schema": outcome_schema,
+        "distributions": distributions,
     })
 
 

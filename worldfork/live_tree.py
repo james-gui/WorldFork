@@ -43,7 +43,26 @@ def render_live_tree_page(run_id: str, title: str) -> str:
                      background: #22c55e; margin-right: 0.4em;
                      animation: pulse 1.5s ease-in-out infinite; }}
     @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} }}
-    #stage {{ width: 100%; height: calc(100vh - 120px); overflow: auto; }}
+    #layout {{ display: flex; height: calc(100vh - 120px); }}
+    #stage {{ flex: 1; overflow: auto; }}
+    #side {{ width: 360px; min-width: 360px; border-left: 1px solid #1f2937;
+             background: #0f172a; overflow-y: auto; padding: 1em;
+             font-size: 0.85em; }}
+    #side h2 {{ font-size: 0.9em; margin: 0 0 0.5em 0; color: #e5e7eb;
+                 text-transform: uppercase; letter-spacing: 0.05em;
+                 font-weight: 600; }}
+    #side .empty {{ color: #6b7280; font-style: italic; }}
+    .dist-block {{ margin-bottom: 1.5em; padding: 0.8em;
+                    background: #111827; border: 1px solid #1f2937; border-radius: 6px; }}
+    .dist-block h3 {{ margin: 0 0 0.3em 0; font-size: 0.85em; color: #cbd5e1;
+                       font-weight: 600; }}
+    .dist-block .desc {{ font-size: 0.75em; color: #94a3b8; margin-bottom: 0.6em;
+                          line-height: 1.4; }}
+    .dist-stats {{ display: flex; gap: 0.8em; font-size: 0.75em; color: #cbd5e1;
+                    margin-top: 0.4em; flex-wrap: wrap; }}
+    .dist-stats span {{ background: #0b1020; padding: 0.15em 0.4em; border-radius: 3px;
+                         border: 1px solid #1f2937; }}
+    .dist-stats strong {{ color: #f3f4f6; }}
     svg {{ display: block; }}
     /* Each tree node persists across polls — CSS transition animates the slide. */
     .node {{ transition: transform 600ms cubic-bezier(0.22, 0.61, 0.36, 1); }}
@@ -88,8 +107,14 @@ def render_live_tree_page(run_id: str, title: str) -> str:
     <span class="pill" id="counts">—</span>
     <span class="pill" id="forks">—</span>
   </div>
-  <div id="stage">
-    <svg id="tree" width="100%" height="100%"></svg>
+  <div id="layout">
+    <div id="stage">
+      <svg id="tree" width="100%" height="100%"></svg>
+    </div>
+    <div id="side">
+      <h2>outcome distributions</h2>
+      <div id="distributions"><div class="empty">awaiting classifier output…</div></div>
+    </div>
   </div>
   <div id="tooltip"></div>
 
@@ -211,10 +236,151 @@ def render_live_tree_page(run_id: str, title: str) -> str:
         }}
       }}
 
-      // 6) If terminal, mark so we stop polling
+      // 6) Draw outcome distributions in the side panel + recolor leaves by
+      //    the headline outcome (first numeric variable in the schema).
+      renderDistributions(data);
+
+      // 7) If terminal, mark so we stop polling
       if (data.phase === 'complete' || data.phase === 'failed') {{
         window.__terminal_shown = true;
         setStatus(data.phase);
+      }}
+    }}
+
+    function renderDistributions(data) {{
+      const panel = document.getElementById('distributions');
+      const dists = data.distributions || {{}};
+      const schema = data.outcome_schema || [];
+      const numericVars = schema.filter(v =>
+        ['float', 'int', 'number'].includes((v.type || '').toLowerCase()) && dists[v.name]);
+
+      if (numericVars.length === 0) {{
+        if (data.manifest_present) {{
+          panel.innerHTML = '<div class="empty">no numeric outcomes in schema</div>';
+        }}
+        // else keep "awaiting classifier output…"
+        return;
+      }}
+
+      // Heatmap-color leaves by the first numeric outcome (the "headline" var)
+      const headline = numericVars[0];
+      const headlineDist = dists[headline.name];
+      const range = headline.range || [headlineDist.min, headlineDist.max];
+      colorLeavesByOutcome(headline.name, range);
+
+      // Render one block per numeric outcome
+      panel.innerHTML = numericVars.map(v => renderDistBlock(v, dists[v.name])).join('');
+    }}
+
+    function renderDistBlock(varDef, d) {{
+      const range = varDef.range || [d.min, d.max];
+      const [lo, hi] = range;
+      const width = 320, height = 90;
+      const margin = {{ left: 8, right: 8, top: 8, bottom: 22 }};
+      const plotW = width - margin.left - margin.right;
+      const plotH = height - margin.top - margin.bottom;
+
+      // Build histogram: 12 bins across the value range
+      const nBins = 12;
+      const binW = (hi - lo) / nBins;
+      const bins = new Array(nBins).fill(0);
+      for (const v of d.values) {{
+        const idx = Math.min(nBins - 1, Math.max(0, Math.floor((v - lo) / binW)));
+        bins[idx]++;
+      }}
+      const maxBin = Math.max(...bins, 1);
+
+      // Render bars
+      let bars = '';
+      for (let i = 0; i < nBins; i++) {{
+        const h = (bins[i] / maxBin) * plotH;
+        const x = margin.left + i * (plotW / nBins) + 1;
+        const y = margin.top + plotH - h;
+        const w = plotW / nBins - 2;
+        // Color: gradient from green→amber→red across range
+        const t = (i + 0.5) / nBins;
+        const color = colorForT(t);
+        bars += `<rect x="${{x}}" y="${{y}}" width="${{w}}" height="${{h}}" fill="${{color}}"/>`;
+      }}
+
+      // Median + IQR markers
+      const xOf = (v) => margin.left + ((v - lo) / (hi - lo)) * plotW;
+      const medianX = xOf(d.median);
+      const q25X = xOf(d.q25);
+      const q75X = xOf(d.q75);
+      const iqr = `<rect x="${{q25X}}" y="${{margin.top + plotH + 4}}" width="${{q75X - q25X}}"
+                          height="6" fill="#3b82f6" opacity="0.4"/>`;
+      const med = `<line x1="${{medianX}}" y1="${{margin.top}}" x2="${{medianX}}" y2="${{margin.top + plotH + 10}}"
+                          stroke="#fbbf24" stroke-width="2"/>`;
+
+      // Axis labels
+      const axis = `
+        <text x="${{margin.left}}" y="${{height - 4}}" font-size="9" fill="#6b7280">${{lo}}</text>
+        <text x="${{margin.left + plotW}}" y="${{height - 4}}" font-size="9" fill="#6b7280" text-anchor="end">${{hi}}</text>
+      `;
+
+      const desc = (varDef.description || '').slice(0, 200);
+      return `
+        <div class="dist-block">
+          <h3>${{varDef.name}}</h3>
+          <div class="desc">${{desc}}${{varDef.description && varDef.description.length > 200 ? '…' : ''}}</div>
+          <svg width="${{width}}" height="${{height}}" style="display:block; max-width:100%;">
+            ${{bars}}
+            ${{iqr}}
+            ${{med}}
+            ${{axis}}
+          </svg>
+          <div class="dist-stats">
+            <span><strong>n</strong> ${{d.n}}</span>
+            <span>median <strong>${{fmt(d.median)}}</strong></span>
+            <span>mean <strong>${{fmt(d.mean)}}</strong></span>
+            <span>IQR [<strong>${{fmt(d.q25)}}</strong>, <strong>${{fmt(d.q75)}}</strong>]</span>
+            <span>range [<strong>${{fmt(d.min)}}</strong>, <strong>${{fmt(d.max)}}</strong>]</span>
+          </div>
+        </div>
+      `;
+    }}
+
+    function fmt(x) {{
+      if (x == null) return '—';
+      if (Math.abs(x) >= 100) return x.toFixed(0);
+      if (Math.abs(x) >= 10) return x.toFixed(1);
+      return x.toFixed(2);
+    }}
+
+    function colorForT(t) {{
+      // green (low) → amber (mid) → red (high)
+      // t in [0, 1]
+      if (t < 0.5) {{
+        const k = t / 0.5; // 0..1
+        const r = Math.round(34 + k * (251 - 34));      // 22→fb (34→251)
+        const g = Math.round(197 + k * (191 - 197));    // c5→bf
+        const b = Math.round(94 + k * (36 - 94));       // 5e→24
+        return `rgb(${{r}}, ${{g}}, ${{b}})`;
+      }} else {{
+        const k = (t - 0.5) / 0.5;
+        const r = Math.round(251 + k * (239 - 251));    // fb→ef
+        const g = Math.round(191 + k * (68 - 191));     // bf→44
+        const b = Math.round(36 + k * (68 - 36));       // 24→44
+        return `rgb(${{r}}, ${{g}}, ${{b}})`;
+      }}
+    }}
+
+    function colorLeavesByOutcome(varName, range) {{
+      const [lo, hi] = range;
+      for (const [sid, g] of nodeGroups.entries()) {{
+        const payload = JSON.parse(g.getAttribute('data-payload') || '{{}}');
+        const isLeaf = !payload.children || payload.children.length === 0;
+        if (!isLeaf) continue;
+        const outcomes = payload.outcomes || {{}};
+        const v = outcomes[varName];
+        const circle = g.querySelector('.node-circle');
+        if (typeof v === 'number') {{
+          const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+          circle.setAttribute('fill', colorForT(t));
+          circle.setAttribute('stroke', '#fff');
+          circle.setAttribute('r', NODE_RADIUS + 2);
+        }}
       }}
     }}
 
