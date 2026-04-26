@@ -34,6 +34,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from worldfork.tree_renderer import render_tree_page, render_tree_svg  # noqa: E402
+from worldfork.live_tree import render_live_tree_page  # noqa: E402
+import urllib.request as _urllib_request  # noqa: E402
+import urllib.parse as _urllib_parse  # noqa: E402
 from worldfork.per_round_extractor import extract_all_branches  # noqa: E402
 from worldfork.aggregator import aggregate_variables  # noqa: E402
 from worldfork.live_state import assemble_live_state  # noqa: E402
@@ -410,11 +413,96 @@ def api_runs():
 @app.route("/run/<run_id>")
 @app.route("/run/<run_id>/live")
 def view_run_live(run_id: str):
-    """Live tree page — minimal scaffold + JS poller. Works for in-flight + completed runs."""
+    """Live tree page — animated tidy-tree, polls /api/run/<id>/lineage every 2s."""
+    rec = _get_run(run_id)
+    if not rec:
+        abort(404)
+    return render_live_tree_page(run_id, rec.get("scenario_name") or "WorldFork ensemble")
+
+
+@app.route("/run/<run_id>/legacy")
+def view_run_legacy(run_id: str):
+    """Legacy SVG-replace tree (kept for comparison while we shake down the new one)."""
     rec = _get_run(run_id)
     if not rec:
         abort(404)
     return _live_tree_page(run_id, rec.get("scenario_name") or "WorldFork ensemble")
+
+
+@app.route("/api/run/<run_id>/lineage")
+def api_run_lineage(run_id: str):
+    """Live lineage tree for the run, sourced from MiroShark's /lineage endpoint.
+
+    Discovers the root parent_sim_id by scraping the orchestrator log for
+    `verifying parent <id>` (or `state_fork: starting parent <id>`), then
+    proxies MiroShark's /api/simulation/<root>/lineage with a since= filter
+    so we only see this run's lineage (not prior demo runs of the same parent).
+    """
+    rec = _get_run(run_id)
+    if not rec:
+        return jsonify({"error": "unknown run_id"}), 404
+
+    log_path = Path(rec.get("log_path", ""))
+    log_text = _read_log_tail(log_path, 5000) if log_path.exists() else ""
+
+    # Find root sim id from log — sim ids are sim_<hex>, so match that strictly
+    # (the log truncates with "…" which would otherwise sneak into the captured id).
+    root_sim_id = None
+    for rx in [
+        r"verifying parent (sim_[a-zA-Z0-9]+)",
+        r"starting parent (sim_[a-zA-Z0-9]+)",
+        r"parent_sim_id[\"':= ]+(sim_[a-zA-Z0-9]+)",
+    ]:
+        m = re.search(rx, log_text)
+        if m:
+            root_sim_id = m.group(1)
+            break
+
+    # Phase detection mirrors live_state's logic
+    phase = "initializing"
+    if rec.get("status") == "completed":
+        phase = "complete"
+    elif rec.get("status") == "failed":
+        phase = "failed"
+    elif "wrote manifest" in log_text:
+        phase = "complete"
+    elif "validating + classifying" in log_text:
+        phase = "classifying"
+    elif "[primary fork]" in log_text or "[nested fork]" in log_text or "branches via" in log_text:
+        phase = "running"
+    elif "verifying parent" in log_text or "starting parent" in log_text:
+        phase = "perturbations_pending"
+
+    if not root_sim_id:
+        return jsonify({"run_id": run_id, "phase": phase, "tree": None})
+
+    started_at = rec.get("started_at") or ""
+    # MiroShark sim state.json uses ISO without Z; trim trailing Z if present for str compare
+    since = started_at.rstrip("Z")
+
+    qs = _urllib_parse.urlencode({"since": since}) if since else ""
+    url = f"http://localhost:5001/api/simulation/{root_sim_id}/lineage" + (f"?{qs}" if qs else "")
+    try:
+        with _urllib_request.urlopen(url, timeout=5) as resp:
+            body = json.loads(resp.read())
+    except Exception as e:
+        return jsonify({
+            "run_id": run_id, "phase": phase, "root_sim_id": root_sim_id,
+            "tree": None, "lineage_error": str(e),
+        })
+
+    if not body.get("success"):
+        return jsonify({
+            "run_id": run_id, "phase": phase, "root_sim_id": root_sim_id,
+            "tree": None, "lineage_error": body.get("error"),
+        })
+
+    return jsonify({
+        "run_id": run_id,
+        "phase": phase,
+        "root_sim_id": root_sim_id,
+        "tree": body["data"],
+    })
 
 
 @app.route("/api/run/<run_id>/state")
