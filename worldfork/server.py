@@ -290,7 +290,25 @@ def api_run_lineage(run_id: str):
     """
     rec = _get_run(run_id)
     if not rec:
-        return jsonify({"error": "unknown run_id"}), 404
+        # Standalone-manifest fallback: historical runs whose orchestrator
+        # never wrote a registry entry still leave a runs/<id>.json manifest.
+        # Synthesize enough of a rec from it to feed the rest of the pipeline.
+        standalone = RUNS_DIR / f"{run_id}.json"
+        if standalone.exists():
+            try:
+                m = _load_json_cached(str(standalone)) or {}
+                rec = {
+                    "manifest_path": str(standalone),
+                    "status": "completed",
+                    "started_at": m.get("started_at"),
+                    "finished_at": m.get("finished_at"),
+                    "log_path": "",
+                    "scenario_path": None,
+                }
+            except Exception:
+                rec = None
+        if not rec:
+            return jsonify({"error": "unknown run_id"}), 404
 
     log_path = Path(rec.get("log_path", ""))
     log_text = _read_log_tail(log_path, 5000) if log_path.exists() else ""
@@ -305,6 +323,16 @@ def api_run_lineage(run_id: str):
         if m:
             root_sim_id = m.group(1)
             break
+
+    # Standalone runs have no log to scrape — pull parent_sim_id from manifest.
+    if not root_sim_id:
+        mp = rec.get("manifest_path")
+        if mp and Path(mp).exists():
+            try:
+                m = _load_json_cached(mp) or {}
+                root_sim_id = m.get("parent_sim_id")
+            except Exception:
+                pass
 
     phase = "initializing"
     if rec.get("status") == "completed":
