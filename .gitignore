@@ -2,14 +2,7 @@
 .DS_Store
 Thumbs.db
 
-# Launcher
-.miroshark.pids
-
-# Reference-only clone of the Hyperstitions design system
-# (https://github.com/aaronjmars/design-system) — not part of the project
-design-system/
-
-# Environment variables (protect sensitive information)
+# Environment variables
 .env
 .env.local
 .env.*.local
@@ -18,7 +11,7 @@ design-system/
 .env.production
 
 # Python
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -31,11 +24,10 @@ ENV/
 dist/
 build/
 
-# Node.js
+# Node / browser
 node_modules/
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+.playwright-mcp/
 
 # IDE
 .vscode/
@@ -48,29 +40,12 @@ yarn-error.log*
 .coverage
 htmlcov/
 
-# Cursor
+# Cursor / Claude state
 .cursor/
 .claude/
 
-# Documentation and test programs
-mydoc/
-mytest/
-
-# Test output artifacts
-backend/e2e_test_output/
-backend/pipeline_test_output/
-
-# Log files
-backend/logs/
-*.log
-
-# Uploaded files
-backend/uploads/
-
-# Docker data
-data/
-
-# WorldFork run artifacts
+# Runtime artifacts
 runs/
+log/
 *.log
-.miroshark.pids
+events.jsonl

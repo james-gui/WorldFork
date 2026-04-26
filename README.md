@@ -1,139 +1,100 @@
-<p align="center">
-  <img src="./docs/images/miroshark.jpg" alt="MiroShark" width="120" />
-</p>
+# WorldFork
 
-<h1 align="center">MiroShark</h1>
+Ensemble forecasting via state-forked agent simulations.
 
-<p align="center">
-  <a href="https://github.com/aaronjmars/MiroShark/stargazers"><img src="https://img.shields.io/github/stars/aaronjmars/MiroShark?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="https://github.com/aaronjmars/MiroShark/network/members"><img src="https://img.shields.io/github/forks/aaronjmars/MiroShark?style=flat-square&logo=github" alt="GitHub forks"></a>
-  <a href="https://x.com/miroshark_"><img src="https://img.shields.io/badge/Follow-%40miroshark__-black?style=flat-square&logo=x&labelColor=000000" alt="Follow on X"></a>
-  <a href="https://bankr.bot/discover/0xd7bc6a05a56655fb2052f742b012d1dfd66e1ba3"><img src="https://img.shields.io/badge/MiroShark%20on-Bankr-orange?style=flat-square&labelColor=1a1a2e" alt="MiroShark on Bankr"></a>
-</p>
+WorldFork orchestrates [MiroShark](https://github.com/aaronjmars/MiroShark) — bootstraps a parent simulation from a seed document, runs it to a fork point, then spawns N alternate-future children with distinct injected events and persona moods, runs them to horizon, classifies each branch's outcomes, and reads a probability distribution back out.
 
-<p align="center">
-  <strong>Simulate anything, for $1 &amp; less than 10 min — Universal Swarm Intelligence Engine</strong><br>
-  Drop in anything — a press release, a news headline, a policy draft, a question you can't answer, a historical what-if — and MiroShark spawns hundreds of agents that react to it hour by hour. Posting, arguing, trading, changing their minds.
-</p>
+The product is the orchestrator + the v2 web UI. The agent engine, knowledge graph, and runners all live in MiroShark — WorldFork is a control plane on top of it.
 
-<p align="center">
-  <img src="./docs/images/miroshark.gif" alt="MiroShark Demo" />
-</p>
+## Architecture
 
----
+```
+WorldFork (this repo)
+├── worldfork/                   ← Python package
+│   ├── server.py                ← Flask app (UI + API) on :5055
+│   ├── orchestrator.py          ← run pipeline (HTTP control loop)
+│   ├── bootstrap.py             ← seed-doc → graph → sim → ready
+│   ├── perturbation_generator.py
+│   ├── classifier.py            ← reads sim sqlite outputs, scores
+│   ├── mood_perturbator.py
+│   └── ui/                      ← v2 SPA (React via UMD/Babel)
+│       ├── templates/WorldFork.html
+│       └── static/{app,pages,tree,analysis,tweaks-panel}.jsx, api.js, styles.css
+├── samples/                     ← scenario YAMLs + perturbation presets
+├── runs/                        ← run artifacts (gitignored)
+└── docs/
 
-## What it does
-
-- You bring a scenario. MiroShark builds the world around it.
-- Hundreds of grounded agents. Twitter, Reddit, and a prediction market. Hour by hour.
-- Chat with any of them. Drop breaking news mid-run. Fork the timeline.
-- Get a report on what happened, citing actual posts and trades.
-
-## Quick start
-
-The recommended path: **one [OpenRouter](https://openrouter.ai/) key + the `./miroshark` launcher.** First simulation in ~10 min, ~$1 (Cheap preset) to ~$3.50 (Best preset).
-
-**Prereqs** — Python 3.11+, Node 18+, Neo4j, and an [OpenRouter key](https://openrouter.ai/).
-
-Install Neo4j — the launcher starts it for you:
-
-- **macOS** — `brew install neo4j`
-- **Linux** — `sudo apt install neo4j` *(or your distro's equivalent)*
-- **Windows** — install [Neo4j Desktop](https://neo4j.com/download/) *(native, GUI — start the DB there, then run the launcher from WSL2 or Git Bash)*, or run the whole stack inside [WSL2](https://learn.microsoft.com/windows/wsl/install) and follow the Linux steps
-- **Zero-install** — create a free [Neo4j Aura](https://neo4j.com/cloud/aura-free/) cloud instance and point `NEO4J_URI` / `NEO4J_PASSWORD` at it in `.env`
-
-Then:
-
-```bash
-git clone https://github.com/aaronjmars/MiroShark.git && cd MiroShark
-cp .env.example .env
-# Open .env and paste your OpenRouter key into the Best or Cheap preset block
-./miroshark
+MiroShark (separate repo, sibling clone)
+└── backend/                     ← Flask app on :5001 (Neo4j-backed)
+                                   /fork-now, /branch-from-snapshot,
+                                   /api/simulation/<id>/lineage, etc.
 ```
 
-The launcher checks dependencies, starts Neo4j, installs frontend + backend, and serves `:3000` + `:5001`. Ctrl+C stops everything. Open `http://localhost:3000` and drop in a document.
+## Setup
 
-**Other paths** — [one-click Railway / Render deploy](docs/INSTALL.md#one-click-cloud), [Docker + Ollama](docs/INSTALL.md#option-b-docker--local-ollama), [manual Ollama](docs/INSTALL.md#option-c-manual--local-ollama), [Claude Code CLI](docs/INSTALL.md#option-d-claude-code-no-api-key) — all in **[docs/INSTALL.md](docs/INSTALL.md)**.
+**Prereqs**: Python 3.11+, [uv](https://docs.astral.sh/uv/), an [OpenRouter](https://openrouter.ai/) key, and the [MiroShark repo](https://github.com/aaronjmars/MiroShark) cloned alongside this one (`../MiroShark/`).
 
-<p align="center">
-  <img src="./docs/images/miroshark-overview.jpg" alt="MiroShark Overview" />
-</p>
+```bash
+# 1. WorldFork
+uv sync
 
-## Features
+# 2. MiroShark (sibling)
+cd ../MiroShark/backend && uv sync && cp ../.env.example ../.env  # add your OPENROUTER_API_KEY
+```
 
-| Feature | What it does |
+## Running
+
+Three processes. MiroShark first (it's what WorldFork talks to), then WorldFork.
+
+```bash
+# Terminal 1 — MiroShark backend on :5001
+cd ../MiroShark/backend && uv run python run.py
+
+# Terminal 2 — WorldFork server on :5055
+WF_ORCHESTRATOR_PYTHON="$(cd ../MiroShark/backend && uv run which python)" \
+    uv run python worldfork/server.py
+```
+
+Open <http://localhost:5055>, click **▶ Start ensemble**.
+
+A run takes ~10 min and ~$1 in OpenRouter:
+
+| Phase | Time |
 |---|---|
-| **Smart Setup** | Drop in a doc → three auto-generated Bull / Bear / Neutral scenarios in ~2s |
-| **What's Trending** | Pick a live news item from RSS feeds; pre-fills the scenario in one click |
-| **Just Ask** | Type a question with no document — MiroShark researches and writes the seed briefing |
-| **Counterfactual Branching** | Fork a running simulation with an injected event ("what if the CEO resigns in round 24?") |
-| **Director Mode** | Inject breaking news into the *current* timeline without forking |
-| **Preset Templates** | 6 benchmarked scenarios: crypto launch, corporate crisis, political debate, product announcement, campus controversy, historical what-if |
-| **Live Oracle Data** | Opt-in grounded seeds from the [FeedOracle](https://mcp.feedoracle.io/mcp) MCP (484 tools) |
-| **Per-Agent MCP Tools** | Personas can invoke real MCP tools (web search, APIs) during simulation |
-| **Embed & Publish** | Public/private toggle + embed URLs for sharing finished runs |
-| **Social Share Card** | 1200×630 PNG that auto-unfurls scenario, status, quality, and belief split on Twitter/X, Discord, Slack, LinkedIn |
-| **Public Gallery** | `/explore` browses every published simulation as a card grid — preview the share card, consensus split, and quality health; click to open or one-click fork |
-| **Article Generation** | Substack-style write-up of what happened, grounded in actual posts and trades |
-| **Interaction Network** | Force-directed agent-to-agent graph with echo-chamber metrics |
-| **Demographics** | Archetype clustering (analyst / influencer / retail / observer…) |
-| **Quality Diagnostics** | Health score per run — engagement, coherence, diversity, variance |
-| **History Database** | Search, clone, export, or delete any past simulation |
-| **Trace Interview** | See the full reasoning chain behind an agent's reply, not just the reply |
-| **Push Notifications** | Web-push alerts when long-running graph / sim / report jobs finish |
+| Graph build (Neo4j ontology + entity extraction) | ~2 min |
+| Simulation create + profile prep | ~2 min |
+| Parent runs r0→r4 | ~1 min |
+| 8 children fork at r4, run r4→r20 in parallel | ~3 min |
+| Classifier sweeps each branch | ~1 min |
+| Manifest written | — |
 
-Each feature is documented in **[docs/FEATURES.md](docs/FEATURES.md)**.
+The UI polls every 3s and updates as branches complete. The orchestrator log lives at `runs/demo_<timestamp>_<id>.log`.
 
-## Use cases
+## Configuration
 
-- **PR crisis testing** — simulate public reaction to a press release before publishing
-- **Market reaction** — feed financial news and observe simulated trader + investor sentiment
-- **Advertisement** — test a campaign, headline, or pitch against a simulated audience before spending
-- **Policy analysis** — test draft regulations against a simulated public
-- **Life decision** — frame a personal decision (job move, relocation, launch timing) as a scenario and watch diverse personas argue it out
-- **What-if history** — rewrite a historical event and see how a population of personas re-narrates the aftermath
-- **Creative experiments** — feed a novel with a lost ending; agents write a narratively consistent conclusion
+Environment variables (all optional):
 
-## Screenshots
+| Var | Default | What |
+|---|---|---|
+| `WF_PORT` | `5055` | port |
+| `WF_BACKEND` | `http://localhost:5001` | MiroShark URL |
+| `WF_ORCHESTRATOR_PYTHON` | `sys.executable` | Python that runs the orchestrator subprocess (must have httpx + yaml — usually MiroShark's venv) |
+| `WF_DEMO_SCENARIO` | `samples/ftx_collapse_scenario.yaml` | scenario for the Start button |
+| `WF_DEMO_NUM_BRANCHES` | `8` | branches per primary fork |
 
-<div align="center">
-<table>
-<tr><td><img src="./docs/images/1.jpg" width="100%"/></td><td><img src="./docs/images/2.jpg" width="100%"/></td></tr>
-<tr><td><img src="./docs/images/3.jpg" width="100%"/></td><td><img src="./docs/images/4.jpg" width="100%"/></td></tr>
-<tr><td><img src="./docs/images/5.jpg" width="100%"/></td><td><img src="./docs/images/6.jpg" width="100%"/></td></tr>
-</table>
-</div>
+## Development
 
-<div align="center">
-<table>
-<tr>
-<td><img src="./docs/images/diagram1.jpg" alt="Diagram 1" width="100%"/></td>
-<td><img src="./docs/images/diagram2.jpg" alt="Diagram 2" width="100%"/></td>
-</tr>
-</table>
-</div>
+```bash
+# Run tests
+uv run pytest worldfork/tests/
 
-## Documentation
+# Run orchestrator standalone (without the UI)
+uv run python worldfork/orchestrator.py samples/ftx_collapse_scenario.yaml \
+    --num-branches 8 --branch-timeout 1800
+```
 
-| | |
-|---|---|
-| [Install](docs/INSTALL.md) | Every deployment path: cloud, Docker, Ollama, Claude Code |
-| [Configuration](docs/CONFIGURATION.md) | Env vars, model routing, feature flags |
-| [Models](docs/MODELS.md) | Cheap vs Best presets, local Ollama models, benchmark findings |
-| [Architecture](docs/ARCHITECTURE.md) | Simulation engine, memory pipeline, graph retrieval |
-| [Features](docs/FEATURES.md) | Deep dive on every feature in the table above |
-| [HTTP API](docs/API.md) | Every endpoint, grouped by concern |
-| [CLI](docs/CLI.md) | `miroshark-cli` reference |
-| [MCP](docs/MCP.md) | Claude Desktop / Cursor / Windsurf / Continue integration + report agent tools (auto-generated snippets in Settings → AI Integration) |
-| [Observability](docs/OBSERVABILITY.md) | Debug panel, event stream, logging |
-| [Contributing](CONTRIBUTING.md) | Tests and development |
+The UI is React via in-browser Babel — no Node build step. Edit `worldfork/ui/static/*.jsx` and hard-refresh the browser.
 
 ## License
 
-AGPL-3.0. See [LICENSE](./LICENSE).
-
-Support the project: `0xd7bc6a05a56655fb2052f742b012d1dfd66e1ba3`
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=aaronjmars/miroshark&type=Date)](https://www.star-history.com/#aaronjmars/miroshark&Date)
+AGPL-3.0
