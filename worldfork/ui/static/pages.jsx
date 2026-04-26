@@ -206,7 +206,7 @@ function SimulationPage({ scenario, loading, err, autoStartedAt, onAnalysis }) {
             {scenario.phase}
           </div>
           <div className="sim-stats">
-            <div><strong className="num">{BRANCHES.length}</strong> branches</div>
+            <div><strong className="num">{SCENARIO.n_total}</strong> branches</div>
             {summary && (
               <div>{SCENARIO.primary_label} = <strong className="num">{(summary.mean*100).toFixed(1)}%</strong></div>
             )}
