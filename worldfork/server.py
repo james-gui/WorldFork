@@ -146,7 +146,52 @@ def _read_log_tail(path: Path, n_lines: int = 80) -> str:
 
 def _extract_manifest_path(log_text: str) -> str | None:
     m = re.search(r"wrote manifest:\s*(\S+)", log_text)
+    if m:
+        return m.group(1)
+    # Orchestrator can also write `wrote manifest → /path/to/manifest.json`
+    m = re.search(r"wrote manifest\s*[→>]+\s*(\S+)", log_text)
     return m.group(1) if m else None
+
+
+def _pid_alive(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _reconcile_registry() -> None:
+    """Heal the registry on startup. If a run is marked status=running but its
+    PID is dead, scan its log for `wrote manifest → <path>` and either flip it
+    to completed (manifest present) or failed. This fixes the case where the
+    server was restarted while orchestrators were running — the in-process
+    _watcher thread that normally updates status died with the old server.
+    """
+    reg = _load_registry()
+    changed = False
+    for run_id, rec in reg.items():
+        if rec.get("status") != "running":
+            continue
+        if _pid_alive(rec.get("pid")):
+            continue
+        log_path = Path(rec.get("log_path", ""))
+        log_text = _read_log_tail(log_path, 500) if log_path.exists() else ""
+        mp = _extract_manifest_path(log_text)
+        if mp and Path(mp).exists():
+            rec["status"] = "completed"
+            rec["manifest_path"] = mp
+            rec["finished_at"] = rec.get("finished_at") or datetime.utcnow().isoformat() + "Z"
+            print(f"[reconcile] {run_id} → completed (manifest={mp})")
+        else:
+            rec["status"] = "failed"
+            rec["finished_at"] = rec.get("finished_at") or datetime.utcnow().isoformat() + "Z"
+            print(f"[reconcile] {run_id} → failed (PID {rec.get('pid')} dead, no manifest)")
+        changed = True
+    if changed:
+        _save_registry(reg)
 
 
 # ---------------------------------------------------------------------------
@@ -479,5 +524,6 @@ def api_run_lineage(run_id: str):
 
 if __name__ == "__main__":
     port = int(os.environ.get("WF_PORT", "5055"))
+    _reconcile_registry()
     print(f"[worldfork] starting on http://localhost:{port}  (backend={BACKEND_URL})")
     app.run(host="0.0.0.0", port=port, debug=False)
