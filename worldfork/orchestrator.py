@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 import sys
 import time
 from dataclasses import dataclass, field, asdict
@@ -131,15 +132,75 @@ class BackendClient:
             raise RuntimeError(f"branch-counterfactual failed: {body.get('error')}")
         return body["data"]
 
+    async def fork_now(
+        self,
+        parent_sim_id: str,
+        perturbations: list[dict],
+        max_rounds: int | None = None,
+        parent_action: str = "continue",
+    ) -> dict:
+        """Live on-demand fork primitive — server snapshots the running parent
+        and fans out len(perturbations) children, all in one round-trip.
+
+        perturbations: list of {label, event_text, mood_modifier?} (one per child).
+        parent_action: "continue" (SIGUSR2) or "stop" (SIGUSR1, terminates parent).
+        """
+        payload = {
+            "num_branches": len(perturbations),
+            "perturbations": perturbations,
+            "parent_action": parent_action,
+        }
+        if max_rounds is not None:
+            payload["max_rounds"] = max_rounds
+        # /fork-now blocks for snapshot + branch + start; bump the per-call timeout.
+        r = await self._client.post(
+            f"{self.base_url}/api/simulation/{parent_sim_id}/fork-now",
+            json=payload,
+            timeout=180.0,
+        )
+        r.raise_for_status()
+        body = r.json()
+        if not body.get("success"):
+            raise RuntimeError(f"fork-now failed: {body.get('error')}")
+        return body["data"]
+
+    async def branch_from_snapshot(
+        self,
+        parent_sim_id: str,
+        snapshot_round: int,
+        injection_text: str,
+        label: str | None = None,
+    ) -> dict:
+        payload = {
+            "parent_simulation_id": parent_sim_id,
+            "snapshot_round": snapshot_round,
+            "injection_text": injection_text,
+        }
+        if label:
+            payload["label"] = label
+            payload["branch_id"] = label
+        r = await self._client.post(
+            f"{self.base_url}/api/simulation/branch-from-snapshot",
+            json=payload,
+        )
+        r.raise_for_status()
+        body = r.json()
+        if not body.get("success"):
+            raise RuntimeError(f"branch-from-snapshot failed: {body.get('error')}")
+        return body["data"]
+
     async def start_simulation(
         self,
         sim_id: str,
         platform: str = "parallel",
         max_rounds: int | None = None,
+        force: bool = False,
     ) -> dict:
         payload: dict[str, Any] = {"simulation_id": sim_id, "platform": platform}
         if max_rounds is not None:
             payload["max_rounds"] = max_rounds
+        if force:
+            payload["force"] = True
         r = await self._client.post(
             f"{self.base_url}/api/simulation/start",
             json=payload,
@@ -248,6 +309,55 @@ def _resolve_sim_dir(uploads_root: Path, sim_id: str) -> Path:
     return uploads_root / "simulations" / sim_id
 
 
+async def _poll_parent_to_round(
+    client: BackendClient,
+    sim_id: str,
+    target_round: int,
+    poll_interval: int,
+    timeout_sec: int,
+) -> dict:
+    """Poll the parent runner until current_round >= target_round.
+
+    Returns the last run-status dict (so the caller can grab process_pid).
+    Raises RuntimeError on timeout or terminal-before-target.
+    """
+    start = time.time()
+    last_state: dict | None = None
+    while time.time() - start < timeout_sec:
+        try:
+            state = await client.get_run_status(sim_id)
+        except Exception as e:
+            print(f"  [parent] poll error: {e}", flush=True)
+            await asyncio.sleep(poll_interval)
+            continue
+        last_state = state
+        cur = state.get("current_round", 0) or 0
+        status = (state.get("runner_status") or "").lower()
+        print(f"  [parent] {status} round {cur}/{target_round}", flush=True)
+        if status in TERMINAL_STATUSES and cur < target_round:
+            raise RuntimeError(
+                f"parent {sim_id} terminated at round {cur} before target {target_round}"
+            )
+        if cur >= target_round:
+            return state
+        await asyncio.sleep(poll_interval)
+    raise RuntimeError(
+        f"parent {sim_id} did not reach round {target_round} in {timeout_sec}s"
+    )
+
+
+async def _wait_for_snapshot(sim_dir: Path, snapshot_round: int, timeout_sec: int = 60) -> Path:
+    """Wait for snapshot_round_<N>/metadata.json to appear in the parent dir."""
+    snap = sim_dir / f"snapshot_round_{snapshot_round}"
+    meta = snap / "metadata.json"
+    start = time.time()
+    while time.time() - start < timeout_sec:
+        if meta.exists():
+            return snap
+        await asyncio.sleep(1)
+    raise RuntimeError(f"snapshot_round_{snapshot_round} did not appear in {sim_dir} within {timeout_sec}s")
+
+
 def _count_posts(sim_dir: Path, platform: str) -> int:
     import sqlite3
     db = sim_dir / f"{platform}_simulation.db"
@@ -308,6 +418,7 @@ async def run_ensemble(
     branching = cfg.get("branching") or {}
     n = num_branches or branching.get("num_branches", 4)
     fork_round = branching.get("fork_round", 5)
+    state_fork = bool(branching.get("state_fork", False))
     platform = (cfg.get("simulation") or {}).get("platform", "reddit")
     horizon_rounds = (cfg.get("simulation") or {}).get("horizon_rounds")
 
@@ -366,59 +477,206 @@ async def run_ensemble(
                 parent_sim_id=parent_sim_id,
             ))
 
-        # === Step C: branch_counterfactual N times ===
-        print(f"[orchestrator] creating {len(run.branches)} branches via "
-              f"branch-counterfactual…", flush=True)
-        for br in run.branches:
+        # === Step C: produce N child sim_ids ===
+        # Two paths:
+        #   - perturbation-stacking (legacy): each child re-runs from round 0
+        #     with its perturbation injected at fork_round. Cheap-ish parent
+        #     re-simulation but doesn't support reactive forking.
+        #   - state_fork (on-demand): every fork goes through the live
+        #     /fork-now primitive. Orchestrator is a thin controller that
+        #     decides WHEN to fork; the server handles snapshot+branch+start
+        #     atomically and the parent keeps running (or stops on demand).
+        #     This is the same primitive a future God-Agent will drive.
+        if state_fork:
+            # 1) Start the parent for its full horizon — it keeps running until
+            #    the controller explicitly snapshots/stops it.
+            print(f"[orchestrator] state_fork: starting parent {parent_sim_id} "
+                  f"(horizon={horizon_rounds}, will fork on-demand at round "
+                  f"{fork_round})…", flush=True)
             try:
-                child_state = await client.branch_counterfactual(
-                    parent_sim_id=parent_sim_id,
-                    injection_text=br.perturbation_text,
-                    trigger_round=fork_round,
-                    label=br.label,
-                )
-                br.child_sim_id = child_state.get("simulation_id")
-                print(f"  [{br.label}] → {br.child_sim_id}", flush=True)
-            except Exception as e:
-                br.invalid_reason = f"branch-counterfactual failed: {e}"
-                print(f"  [{br.label}] FAILED: {e}", flush=True)
-
-        # === Step C.5: apply mood modifier (Road B) ===
-        # Modify each child's profile files BEFORE start fires so the runner
-        # picks up the new persona text.
-        if any(br.mood_modifier for br in run.branches):
-            print(f"[orchestrator] applying mood modifiers (Road B)…", flush=True)
-            for br in run.branches:
-                if not br.child_sim_id or not br.mood_modifier:
-                    continue
-                try:
-                    sim_dir = _resolve_sim_dir(uploads_root, br.child_sim_id)
-                    counts = apply_mood_modifier(sim_dir, br.mood_modifier)
-                    br.mood_applied_counts = counts
-                    print(f"  [{br.label}] mood applied: {counts}", flush=True)
-                except Exception as e:
-                    print(f"  [{br.label}] mood apply FAILED: {e}", flush=True)
-                    # Don't invalidate — just log; the branch can still run without mood
-                    br.mood_applied_counts = {"error": str(e)}
-
-        # === Step D: start each child ===
-        print(f"[orchestrator] starting {len(run.branches)} runners…", flush=True)
-        for br in run.branches:
-            if not br.child_sim_id:
-                continue
-            try:
-                start_data = await client.start_simulation(
-                    sim_id=br.child_sim_id,
+                parent_start = await client.start_simulation(
+                    sim_id=parent_sim_id,
                     platform="parallel",
                     max_rounds=horizon_rounds,
+                    force=True,  # parent may be in stuck "running" status from a prior run
                 )
-                print(f"  [{br.label}] started "
-                      f"(pid={start_data.get('process_pid')})", flush=True)
-                # Stagger slightly so the backend doesn't spawn all subprocesses simultaneously.
-                await asyncio.sleep(1.0)
+                parent_pid = parent_start.get("process_pid")
+                print(f"  parent started (pid={parent_pid})", flush=True)
             except Exception as e:
-                br.invalid_reason = f"start failed: {e}"
-                print(f"  [{br.label}] start FAILED: {e}", flush=True)
+                raise RuntimeError(f"failed to start parent for state_fork: {e}")
+
+            # 2) Wait for parent to reach the primary fork_round, then issue
+            #    a single on-demand fork via /fork-now (snapshot + N children
+            #    + start, all server-side). parent_action="stop" mirrors the
+            #    pre-existing behavior: we don't need the unperturbed parent
+            #    to keep running once we have N perturbed children.
+            await _poll_parent_to_round(
+                client=client, sim_id=parent_sim_id, target_round=fork_round,
+                poll_interval=poll_interval, timeout_sec=branch_timeout,
+            )
+            primary_perts = [
+                {
+                    "label": br.label,
+                    "event_text": br.perturbation_text,
+                    "mood_modifier": br.mood_modifier,
+                }
+                for br in run.branches
+            ]
+            print(f"[orchestrator] [primary fork] → /fork-now "
+                  f"(N={len(primary_perts)}, parent_action=stop)…", flush=True)
+            primary = await client.fork_now(
+                parent_sim_id=parent_sim_id,
+                perturbations=primary_perts,
+                max_rounds=horizon_rounds,
+                parent_action="stop",
+            )
+            run.fork_round = int(primary["snapshot_round"])
+            for br, child in zip(run.branches, primary["children"]):
+                br.child_sim_id = child.get("simulation_id")
+                start_err = child.get("start_error")
+                if start_err:
+                    br.invalid_reason = f"start_error: {start_err}"
+                    print(f"  [{br.label}] start_error: {start_err}", flush=True)
+                else:
+                    print(f"  [{br.label}] → {br.child_sim_id} "
+                          f"(pid={child.get('process_pid')})", flush=True)
+                # Mood was applied server-side; surface count = "applied" for the manifest.
+                if br.mood_modifier:
+                    br.mood_applied_counts = {"applied_via_fork_now": True}
+
+            # 3) Optional nested fork — second on-demand fork against one of the
+            #    primary children once it reaches `nested_fork.fork_round`. This
+            #    is the same primitive (a future God-Agent decides target +
+            #    timing instead of YAML config).
+            nested_cfg = (cfg.get("branching") or {}).get("nested_fork") or {}
+            if nested_cfg.get("enabled") and run.branches:
+                target_idx = int(nested_cfg.get("target_branch_index", 0))
+                target_round = int(nested_cfg.get("fork_round", fork_round + 4))
+                target_n = int(nested_cfg.get("num_branches", 2))
+                if target_idx >= len(run.branches):
+                    print(f"[orchestrator] nested_fork: target_branch_index={target_idx} "
+                          f"out of range (have {len(run.branches)} branches) — skipping",
+                          flush=True)
+                else:
+                    target_br = run.branches[target_idx]
+                    if not target_br.child_sim_id:
+                        print(f"[orchestrator] nested_fork: target [{target_br.label}] "
+                              f"never started — skipping nested fork", flush=True)
+                    else:
+                        print(f"[orchestrator] nested_fork: waiting for "
+                              f"[{target_br.label}] ({target_br.child_sim_id}) "
+                              f"to reach round {target_round}…", flush=True)
+                        await _poll_parent_to_round(
+                            client=client, sim_id=target_br.child_sim_id,
+                            target_round=target_round,
+                            poll_interval=poll_interval, timeout_sec=branch_timeout,
+                        )
+                        # Generate fresh perturbations for the nested fork. They're
+                        # applied at a later sim-time so the prompt context shifts
+                        # ("after the initial perturbation has propagated…").
+                        nested_seed_text = cfg.get("_seed_text", "")
+                        nested_context = (
+                            f"NESTED FORK: parent branch '{target_br.label}' "
+                            f"has been running with this perturbation:\n"
+                            f"  {target_br.perturbation_text[:300]}\n\n"
+                            f"Generate {target_n} additional perturbations that "
+                            f"could occur at simulation round {target_round}, "
+                            f"AFTER the initial perturbation has had time to "
+                            f"propagate. Each should branch the cascade in a "
+                            f"distinct new direction."
+                        )
+                        nested_perturbations = generate_perturbations(
+                            seed_text=nested_seed_text,
+                            n=target_n,
+                            context=nested_context,
+                        )
+                        nested_perts_payload = [
+                            {
+                                "label": f"nested_{p['label']}",
+                                "event_text": p.get("event_text", ""),
+                                "mood_modifier": p.get("mood_modifier"),
+                            }
+                            for p in nested_perturbations
+                        ]
+                        print(f"[orchestrator] [nested fork] → /fork-now on "
+                              f"{target_br.child_sim_id} (N={target_n}, "
+                              f"parent_action=continue)…", flush=True)
+                        nested = await client.fork_now(
+                            parent_sim_id=target_br.child_sim_id,
+                            perturbations=nested_perts_payload,
+                            max_rounds=horizon_rounds,
+                            parent_action="continue",
+                        )
+                        for p, child in zip(nested_perturbations, nested["children"]):
+                            grandchild_id = child.get("simulation_id")
+                            br = BranchResult(
+                                label=f"nested_{p['label']}",
+                                perturbation_text=p.get("event_text", ""),
+                                mood_modifier=p.get("mood_modifier"),
+                                parent_sim_id=target_br.child_sim_id,
+                            )
+                            br.child_sim_id = grandchild_id
+                            if p.get("mood_modifier"):
+                                br.mood_applied_counts = {"applied_via_fork_now": True}
+                            run.branches.append(br)
+                            print(f"  [nested_{p['label']}] → {grandchild_id} "
+                                  f"(pid={child.get('process_pid')})", flush=True)
+        else:
+            print(f"[orchestrator] creating {len(run.branches)} branches via "
+                  f"branch-counterfactual…", flush=True)
+            for br in run.branches:
+                try:
+                    child_state = await client.branch_counterfactual(
+                        parent_sim_id=parent_sim_id,
+                        injection_text=br.perturbation_text,
+                        trigger_round=fork_round,
+                        label=br.label,
+                    )
+                    br.child_sim_id = child_state.get("simulation_id")
+                    print(f"  [{br.label}] → {br.child_sim_id}", flush=True)
+                except Exception as e:
+                    br.invalid_reason = f"branch-counterfactual failed: {e}"
+                    print(f"  [{br.label}] FAILED: {e}", flush=True)
+
+        # === Step C.5 + D: mood + start ===
+        # On the state_fork (on-demand) path /fork-now already applied mood
+        # server-side and started every child runner — skip both steps and go
+        # straight to polling. Only the legacy perturbation-stacking path runs
+        # the per-branch mood/start loops here.
+        if not state_fork:
+            if any(br.mood_modifier for br in run.branches):
+                print(f"[orchestrator] applying mood modifiers (Road B)…", flush=True)
+                for br in run.branches:
+                    if not br.child_sim_id or not br.mood_modifier:
+                        continue
+                    try:
+                        sim_dir = _resolve_sim_dir(uploads_root, br.child_sim_id)
+                        counts = apply_mood_modifier(sim_dir, br.mood_modifier)
+                        br.mood_applied_counts = counts
+                        print(f"  [{br.label}] mood applied: {counts}", flush=True)
+                    except Exception as e:
+                        print(f"  [{br.label}] mood apply FAILED: {e}", flush=True)
+                        br.mood_applied_counts = {"error": str(e)}
+
+            print(f"[orchestrator] starting {len(run.branches)} runners…", flush=True)
+            for br in run.branches:
+                if not br.child_sim_id:
+                    continue
+                try:
+                    start_data = await client.start_simulation(
+                        sim_id=br.child_sim_id,
+                        platform="parallel",
+                        max_rounds=horizon_rounds,
+                    )
+                    print(f"  [{br.label}] started "
+                          f"(pid={start_data.get('process_pid')})", flush=True)
+                    await asyncio.sleep(1.0)
+                except Exception as e:
+                    br.invalid_reason = f"start failed: {e}"
+                    print(f"  [{br.label}] start FAILED: {e}", flush=True)
+        else:
+            print(f"[orchestrator] state_fork: skipping local mood/start "
+                  f"loops — /fork-now handled them server-side", flush=True)
 
         # === Step D continued: poll all children to terminal status ===
         running_branches = [b for b in run.branches if b.child_sim_id and not b.invalid_reason]

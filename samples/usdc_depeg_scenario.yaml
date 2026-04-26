@@ -19,9 +19,23 @@ simulation:
 
 # How branches are created and run.
 branching:
-  fork_round: 1              # fire perturbations early, before cascade narrative locks in
+  state_fork: true           # v0.5: every fork goes through the live /fork-now primitive
+                             # (snapshot + branch + start, server-side). Future God-Agent
+                             # will drive this same primitive instead of YAML config.
+  fork_round: 4              # late enough that a multi-round pre-fork history exists
   num_branches: 8            # runs concurrently — DGX has the headroom
   perturbation_strategy: god_llm  # vs random_seed_only baseline
+
+  # Optional: trigger a SECOND on-demand fork against one of the primary
+  # children once it reaches `fork_round`. Same /fork-now primitive — this
+  # is just the orchestrator playing controller a second time. In production,
+  # the God-Agent makes this decision live based on what's happening in the
+  # branch (e.g. "this one is showing exit advocacy — let's split it again").
+  nested_fork:
+    enabled: true
+    target_branch_index: 0   # which primary child to re-fork (0 = first)
+    fork_round: 8            # round at which to snapshot the chosen child
+    num_branches: 3          # how many grandchildren to spawn
   god_llm_model: google/gemini-3.1-flash-lite-preview
   god_llm_prompt: |
     You are simulating plausible exogenous events around a USDC depeg cascade.
