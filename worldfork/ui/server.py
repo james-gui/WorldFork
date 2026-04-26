@@ -35,6 +35,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from worldfork.tree_renderer import render_tree_page, render_tree_svg  # noqa: E402
 from worldfork.live_tree import render_live_tree_page  # noqa: E402
+from worldfork.analysis_page import render_analysis_page  # noqa: E402
 import urllib.request as _urllib_request  # noqa: E402
 import urllib.parse as _urllib_parse  # noqa: E402
 from worldfork.per_round_extractor import extract_all_branches  # noqa: E402
@@ -421,6 +422,15 @@ def view_run_live(run_id: str):
     if not rec:
         abort(404)
     return render_live_tree_page(run_id, rec.get("scenario_name") or "WorldFork ensemble")
+
+
+@app.route("/run/<run_id>/analysis")
+def view_run_analysis(run_id: str):
+    """Dedicated analysis page — large interactive charts + sortable table."""
+    rec = _get_run(run_id)
+    if not rec:
+        abort(404)
+    return render_analysis_page(run_id, rec.get("scenario_name") or "WorldFork ensemble")
 
 
 @app.route("/run/<run_id>/legacy")

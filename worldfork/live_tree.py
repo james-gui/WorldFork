@@ -35,6 +35,12 @@ def render_live_tree_page(run_id: str, title: str) -> str:
     header .meta {{ color: #9ca3af; font-size: 0.85em; margin-top: 0.15em; }}
     header a.back {{ color: #818cf8; text-decoration: none; font-size: 0.85em; }}
     header a.back:hover {{ text-decoration: underline; }}
+    header a.analysis-btn {{ background: #4f46e5; color: white; padding: 0.5em 1em;
+                              border-radius: 6px; text-decoration: none; font-size: 0.85em;
+                              font-weight: 600; margin-right: 0.8em; display: none;
+                              transition: background 200ms; }}
+    header a.analysis-btn:hover {{ background: #4338ca; }}
+    header a.analysis-btn.ready {{ display: inline-block; }}
     #info {{ background: #1f2937; padding: 0.6em 1.5em; font-size: 0.85em;
               border-bottom: 1px solid #374151; display: flex; gap: 1.5em; }}
     #info .pill {{ background: #0b1020; padding: 0.2em 0.6em; border-radius: 999px;
@@ -100,7 +106,10 @@ def render_live_tree_page(run_id: str, title: str) -> str:
       <h1>WorldFork live tree</h1>
       <div class="meta" id="meta">{title}</div>
     </div>
-    <a class="back" href="/">← back</a>
+    <div>
+      <a class="analysis-btn" id="analysis-btn" href="/run/{run_id}/analysis">📊 Open data analysis →</a>
+      <a class="back" href="/">← back</a>
+    </div>
   </header>
   <div id="info">
     <span class="pill"><span class="pulse"></span><span id="phase">connecting…</span></span>
@@ -240,7 +249,13 @@ def render_live_tree_page(run_id: str, title: str) -> str:
       //    the headline outcome (first numeric variable in the schema).
       renderDistributions(data);
 
-      // 7) If terminal, mark so we stop polling
+      // 7) Show the "Open data analysis" button as soon as the manifest
+      //    is on disk (classifier has output something).
+      if (data.manifest_present) {{
+        document.getElementById('analysis-btn').classList.add('ready');
+      }}
+
+      // 8) If terminal, mark so we stop polling
       if (data.phase === 'complete' || data.phase === 'failed') {{
         window.__terminal_shown = true;
         setStatus(data.phase);
